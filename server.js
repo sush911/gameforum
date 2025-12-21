@@ -10,7 +10,7 @@ const jwt = require('jsonwebtoken');
 const app = express();
 const PORT = 3000;
 
-// Middleware
+// ----------------- Middleware -----------------
 app.use(cors());
 app.use(bodyParser.json());
 
@@ -44,6 +44,10 @@ const saltRounds = 10;
 
 // Register
 app.post('/api/users/register', async (req, res) => {
+    if (!req.body || Object.keys(req.body).length === 0) {
+        return res.status(400).json({ msg: 'Request body missing or invalid JSON' });
+    }
+
     const { username, email, password } = req.body;
 
     try {
@@ -62,13 +66,17 @@ app.post('/api/users/register', async (req, res) => {
 
         res.json({ msg: 'User registered', user: newUser.rows[0] });
     } catch (err) {
-        console.error(err);
+        console.error('Register error:', err);
         res.status(500).send('Server error');
     }
 });
 
 // Login
 app.post('/api/users/login', async (req, res) => {
+    if (!req.body || Object.keys(req.body).length === 0) {
+        return res.status(400).json({ msg: 'Request body missing or invalid JSON' });
+    }
+
     const { email, password } = req.body;
 
     try {
@@ -86,7 +94,37 @@ app.post('/api/users/login', async (req, res) => {
 
         res.json({ msg: 'Logged in', token });
     } catch (err) {
-        console.error(err);
+        console.error('Login error:', err);
+        res.status(500).send('Server error');
+    }
+});
+
+// ----------------- Posts Routes -----------------
+app.post('/api/posts', async (req, res) => {
+    if (!req.body || Object.keys(req.body).length === 0) {
+        return res.status(400).json({ msg: 'Request body missing or invalid JSON' });
+    }
+
+    const { user_id, title, content } = req.body;
+
+    try {
+        const newPost = await pool.query(
+            'INSERT INTO posts (user_id, title, content) VALUES ($1, $2, $3) RETURNING *',
+            [user_id, title, content]
+        );
+        res.json(newPost.rows[0]);
+    } catch (err) {
+        console.error('Create post error:', err);
+        res.status(500).send('Server error');
+    }
+});
+
+app.get('/api/posts', async (req, res) => {
+    try {
+        const posts = await pool.query('SELECT * FROM posts ORDER BY created_at DESC');
+        res.json(posts.rows);
+    } catch (err) {
+        console.error('Get posts error:', err);
         res.status(500).send('Server error');
     }
 });
@@ -94,4 +132,7 @@ app.post('/api/users/login', async (req, res) => {
 // ----------------- Start Server -----------------
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    pool.connect()
+        .then(() => console.log('Connected to PostgreSQL'))
+        .catch(err => console.error('DB connection error:', err));
 });
