@@ -95,36 +95,36 @@ app.post('/api/users/register', registerLimiter, async (req, res) => {
   try {
     const { username, email, password, confirmPassword } = req.body;
 
-    // Validate inputs
+    // validate input
     if (!username || !email || !password || !confirmPassword) {
-      return res.status(400).json({ msg: 'Missing required fields' });
+      return res.status(400).json({ msg: 'all fields needed' });
     }
 
-    if (username.length < 3 || username.length > 30) {
-      return res.status(400).json({ msg: 'Username must be 3-30 characters' });
+    if (!isValidUsername(username)) {
+      return res.status(400).json({ msg: 'username 3-30 chars, letters numbers underscore' });
     }
 
     if (!isValidEmail(email)) {
-      return res.status(400).json({ msg: 'Invalid email format' });
+      return res.status(400).json({ msg: 'bad email' });
     }
 
     if (!isStrongPassword(password)) {
       return res.status(400).json({
-        msg: 'Password must be 8+ chars with uppercase, lowercase, digit, and special char'
+        msg: 'password needs uppercase lowercase number and special char, 8+ chars'
       });
     }
 
     if (password !== confirmPassword) {
-      return res.status(400).json({ msg: 'Passwords do not match' });
+      return res.status(400).json({ msg: 'passwords dont match' });
     }
 
-    // Check if user already exists
+    // check user exists
     const existingUser = await User.findOne({ $or: [{ email }, { username }] });
     if (existingUser) {
-      return res.status(409).json({ msg: 'Email or username already in use' });
+      return res.status(409).json({ msg: 'email or username already used' });
     }
 
-    // Hash password and create user
+    // hash and create
     const hash = await bcrypt.hash(password, 12);
     const user = await User.create({
       username,
@@ -135,15 +135,15 @@ app.post('/api/users/register', registerLimiter, async (req, res) => {
       lastPasswordChange: new Date()
     });
 
-    await logAction(user._id, 'USER_REGISTERED', { email });
+    await logAction(user._id, 'REGISTERED', { email });
 
     res.status(201).json({
-      msg: 'User registered successfully',
+      msg: 'registered',
       user: sanitizeUser(user)
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ msg: 'Registration failed' });
+    res.status(500).json({ msg: 'register failed' });
   }
 });
 
