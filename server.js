@@ -379,24 +379,24 @@ app.post('/api/users/password/change', auth, async (req, res) => {
 
     if (!isStrongPassword(newPassword)) {
       return res.status(400).json({
-        msg: 'Password must be 8+ chars with uppercase, lowercase, digit, and special char'
+        msg: 'password needs uppercase lowercase number special char, 8+ chars'
       });
     }
 
-    // Check password reuse
+    // check not reusing old password
     const reused = await checkPasswordReuse(user, newPassword, bcrypt);
     if (reused) {
       return res.status(400).json({
-        msg: 'Cannot reuse recent passwords. Use a different password.'
+        msg: 'cant reuse old passwords'
       });
     }
 
-    // Update password history
+    // save password in history
     const newHash = await bcrypt.hash(newPassword, 12);
     if (!user.passwordHistory) user.passwordHistory = [];
     user.passwordHistory.push({ password: newHash, changedAt: new Date() });
     if (user.passwordHistory.length > 10) {
-      user.passwordHistory.shift(); // Keep only last 10
+      user.passwordHistory.shift();
     }
 
     user.password = newHash;
@@ -406,10 +406,10 @@ app.post('/api/users/password/change', auth, async (req, res) => {
 
     await logAction(user._id, 'PASSWORD_CHANGED');
 
-    res.json({ msg: 'Password changed successfully' });
+    res.json({ msg: 'password updated' });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ msg: 'Password change failed' });
+    res.status(500).json({ msg: 'password change failed' });
   }
 });
 
@@ -419,38 +419,38 @@ app.post('/api/users/password/reset', async (req, res) => {
     const { email } = req.body;
 
     if (!email) {
-      return res.status(400).json({ msg: 'Email required' });
+      return res.status(400).json({ msg: 'email needed' });
     }
 
     const user = await User.findOne({ email });
     if (!user) {
-      // Don't reveal if email exists
+      // dont tell if email exists for security
       return res.status(200).json({
-        msg: 'If email exists, password reset link sent'
+        msg: 'check email if it exists'
       });
     }
 
-    // Generate reset token
+    // create reset token
     const resetToken = crypto.randomBytes(32).toString('hex');
     const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
 
-    // Store reset token (in real app, save to user model with expiry)
+    // save it with 1 hour expiry
     user.resetToken = resetTokenHash;
-    user.resetTokenExpires = new Date(Date.now() + 1 * 60 * 60 * 1000); // 1 hour
+    user.resetTokenExpires = new Date(Date.now() + 60 * 60 * 1000);
     await user.save();
 
-    // In real app, send reset link via email
-    console.log(`Reset token for ${email}: ${resetToken}`);
+    // TODO: send email with reset link
+    console.log(`reset token: ${resetToken}`);
 
-    await logAction(user._id, 'PASSWORD_RESET_REQUESTED');
+    await logAction(user._id, 'PASSWORD_RESET');
 
     res.json({
-      msg: 'If email exists, password reset link sent',
-      resetToken // Remove in production - send via email instead
+      msg: 'check email',
+      resetToken
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ msg: 'Password reset failed' });
+    res.status(500).json({ msg: 'reset failed' });
   }
 });
 
@@ -465,7 +465,7 @@ app.get('/api/users/profile', auth, async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ msg: 'Failed to fetch profile' });
+    res.status(500).json({ msg: 'cant get profile' });
   }
 });
 
@@ -794,6 +794,6 @@ app.post('/api/admin/users/:id/lock', auth, checkRole(['Admin']), async (req, re
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`🎮 Gaming Forum API running on http://localhost:${PORT}`);
-  console.log(`📝 Remember to set JWT_SECRET and SQUARE_ACCESS_TOKEN in .env`);
+  console.log(` Gaming Forum API running on http://localhost:${PORT}`);
+  console.log(`Remember to set JWT_SECRET and SQUARE_ACCESS_TOKEN in .env`);
 });
