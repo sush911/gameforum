@@ -114,7 +114,6 @@ app.post('/api/users/register', async (req, res) => {
   }
 });
 
-// LOGIN (Rate-limited + lockout)
 app.post('/api/users/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -123,9 +122,10 @@ app.post('/api/users/login', loginLimiter, async (req, res) => {
       return res.status(400).json({ msg: 'All fields required' });
 
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ msg: 'Invalid credentials' });
+    if (!user)
+      return res.status(400).json({ msg: 'Invalid credentials' });
 
-    // Account locked
+    // Account lock check
     if (user.lockUntil && user.lockUntil > Date.now()) {
       return res.status(403).json({ msg: 'Account locked. Try later.' });
     }
@@ -144,11 +144,32 @@ app.post('/api/users/login', loginLimiter, async (req, res) => {
       return res.status(400).json({ msg: 'Invalid credentials' });
     }
 
-    // Reset on success
+    // Reset counters
     user.failedLoginAttempts = 0;
     user.lockUntil = null;
+
+    // 🔐 MFA CHECK
+    if (user.mfa_enabled) {
+      const otp = generateOTP();
+
+      user.mfa_otp = await bcrypt.hash(otp, 10);
+      user.mfa_expires = Date.now() + 5 * 60 * 1000; // 5 minutes
+      await user.save();
+
+      // Simulate sending OTP (for coursework/demo)
+      console.log(`MFA OTP for ${user.email}: ${otp}`);
+
+      await logAction(user._id, 'MFA OTP generated');
+
+      return res.json({
+        msg: 'MFA required',
+        userId: user._id
+      });
+    }
+
     await user.save();
 
+    // No MFA → issue token
     const token = jwt.sign(
       { id: user._id, role: user.role },
       process.env.JWT_SECRET,
@@ -164,9 +185,6 @@ app.post('/api/users/login', loginLimiter, async (req, res) => {
   }
 });
 
-/* =======================
-   POSTS
-======================= */
 
 // CREATE POST
 app.post('/api/posts', auth, async (req, res) => {
