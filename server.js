@@ -1,12 +1,15 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
+const speakeasy = require('speakeasy');
+const QRCode = require('qrcode');
 require('dotenv').config();
 
-// DB
+// Database
 const connectDB = require('./db');
 
 // Models
@@ -18,8 +21,22 @@ const Payment = require('./models/Payment');
 
 // Middleware
 const auth = require('./middleware/auth');
+const checkRole = require('./middleware/role');
 
-// ✅ Square SDK (FIXED)
+// Utils
+const {
+  isValidEmail,
+  isStrongPassword,
+  checkPasswordReuse,
+  isAccountLocked,
+  isPasswordExpired,
+  getPasswordExpiryDate,
+  generateSessionToken,
+  getSessionExpiryTime,
+  sanitizeUser
+} = require('./utils/security');
+
+// Square payment client
 const { SquareClient } = require('square');
 const squareClient = new SquareClient({
   accessToken: process.env.SQUARE_ACCESS_TOKEN,
@@ -29,125 +46,661 @@ const squareClient = new SquareClient({
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Security middleware
+app.use(helmet()); // Set security headers
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 connectDB();
 
+// Rate limiters
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5,
+  message: { msg: 'Too many login attempts. Try again in 15 minutes.' },
+  skip: (req) => req.user && req.user.role === 'Admin'
 });
 
-// Helpers
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10,
+  message: { msg: 'Too many registrations. Try again later.' }
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100
+});
+
+// Log user action
 const logAction = async (userId, action, metadata = {}) => {
   try {
-    await AuditLog.create({ user: userId, action, metadata });
-  } catch {}
+    await AuditLog.create({
+      user: userId,
+      action,
+      metadata,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    console.error('Audit log error:', err.message);
+  }
 };
 
-const checkRole = (roles) => (req, res, next) => {
-  if (!roles.includes(req.user.role))
-    return res.status(403).json({ msg: 'Forbidden' });
-  next();
-};
+// Health check
+app.get('/', (req, res) => res.json({ msg: 'Gaming Forum API' }));
 
-const strongPassword = (p) =>
-  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/.test(p);
+// ==================== USER AUTHENTICATION ====================
 
-// Test
-app.get('/', (req, res) => res.send('API running'));
-
-// USERS
-app.post('/api/users/register', async (req, res) => {
+// Register endpoint
+app.post('/api/users/register', registerLimiter, async (req, res) => {
   try {
-    const { username, email, password } = req.body;
-    if (!username || !email || !password)
-      return res.status(400).json({ msg: 'Missing fields' });
+    const { username, email, password, confirmPassword } = req.body;
 
-    if (!strongPassword(password))
-      return res.status(400).json({ msg: 'Weak password' });
+    // Validate inputs
+    if (!username || !email || !password || !confirmPassword) {
+      return res.status(400).json({ msg: 'Missing required fields' });
+    }
 
-    const exists = await User.findOne({ email });
-    if (exists) return res.status(400).json({ msg: 'Email exists' });
+    if (username.length < 3 || username.length > 30) {
+      return res.status(400).json({ msg: 'Username must be 3-30 characters' });
+    }
 
-    const hash = await bcrypt.hash(password, 10);
-    const user = await User.create({ username, email, password: hash });
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ msg: 'Invalid email format' });
+    }
 
-    await logAction(user._id, 'REGISTER');
-    res.status(201).json({ msg: 'User registered' });
-  } catch {
-    res.status(500).json({ msg: 'Server error' });
+    if (!isStrongPassword(password)) {
+      return res.status(400).json({
+        msg: 'Password must be 8+ chars with uppercase, lowercase, digit, and special char'
+      });
+    }
+
+    if (password !== confirmPassword) {
+      return res.status(400).json({ msg: 'Passwords do not match' });
+    }
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ $or: [{ email }, { username }] });
+    if (existingUser) {
+      return res.status(409).json({ msg: 'Email or username already in use' });
+    }
+
+    // Hash password and create user
+    const hash = await bcrypt.hash(password, 12);
+    const user = await User.create({
+      username,
+      email,
+      password: hash,
+      passwordHistory: [{ password: hash, changedAt: new Date() }],
+      passwordExpiresAt: getPasswordExpiryDate(),
+      lastPasswordChange: new Date()
+    });
+
+    await logAction(user._id, 'USER_REGISTERED', { email });
+
+    res.status(201).json({
+      msg: 'User registered successfully',
+      user: sanitizeUser(user)
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Registration failed' });
   }
 });
 
+// Login endpoint
 app.post('/api/users/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password)
-      return res.status(400).json({ msg: 'Missing fields' });
+
+    if (!email || !password) {
+      return res.status(400).json({ msg: 'Email and password required' });
+    }
 
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ msg: 'Invalid login' });
+    if (!user) {
+      return res.status(401).json({ msg: 'Invalid credentials' });
+    }
 
-    const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return res.status(400).json({ msg: 'Invalid login' });
+    // Check if account is locked
+    if (isAccountLocked(user)) {
+      return res.status(401).json({
+        msg: 'Account locked due to multiple failed attempts. Try again later.'
+      });
+    }
 
+    // Check password
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) {
+      // Increment failed attempts
+      user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+      
+      if (user.failedLoginAttempts >= 5) {
+        // Lock account for 30 minutes
+        user.lockUntil = new Date(Date.now() + 30 * 60 * 1000);
+        await logAction(user._id, 'ACCOUNT_LOCKED', { reason: 'Failed login attempts' });
+      }
+      
+      await user.save();
+      return res.status(401).json({ msg: 'Invalid credentials' });
+    }
+
+    // Check password expiry
+    if (isPasswordExpired(user)) {
+      return res.status(403).json({ msg: 'Password expired. Please reset it.' });
+    }
+
+    // Reset failed attempts and unlock
+    user.failedLoginAttempts = 0;
+    user.lockUntil = null;
+    user.lastLogin = new Date();
+    await user.save();
+
+    // Check if MFA is enabled
+    if (user.mfa_enabled) {
+      return res.status(200).json({
+        msg: 'MFA required',
+        requireMFA: true,
+        tempUserId: user._id
+      });
+    }
+
+    // Create JWT token
     const token = jwt.sign(
-      { id: user._id, role: user.role },
+      { id: user._id, role: user.role, email: user.email },
       process.env.JWT_SECRET,
-      { expiresIn: '1h' }
+      { expiresIn: '24h' }
     );
 
-    await logAction(user._id, 'LOGIN');
-    res.json({ token });
-  } catch {
-    res.status(500).json({ msg: 'Server error' });
+    // Store session token
+    user.sessionToken = generateSessionToken();
+    user.sessionExpiresAt = getSessionExpiryTime();
+    await user.save();
+
+    await logAction(user._id, 'USER_LOGIN', { ip: req.ip });
+
+    res.json({
+      msg: 'Login successful',
+      token,
+      user: sanitizeUser(user)
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Login failed' });
   }
 });
 
-// POSTS
+// ==================== MFA SETUP & VERIFICATION ====================
+
+// Setup MFA (TOTP)
+app.post('/api/users/mfa/setup', auth, async (req, res) => {
+  try {
+    const user = req.userDoc;
+
+    // Generate TOTP secret
+    const secret = speakeasy.generateSecret({
+      name: `GameForum (${user.email})`,
+      issuer: 'GameForum',
+      length: 32
+    });
+
+    // Generate QR code
+    const qrCode = await QRCode.toDataURL(secret.otpauth_url);
+
+    // Generate backup codes
+    const backupCodes = Array.from({ length: 10 }, () =>
+      crypto.randomBytes(4).toString('hex').toUpperCase()
+    );
+
+    // Temporarily store secret (not enabled yet)
+    const tempSecret = {
+      secret: secret.base32,
+      qrCode,
+      backupCodes
+    };
+
+    res.json({
+      msg: 'MFA setup initiated',
+      secret: tempSecret.secret,
+      qrCode,
+      backupCodes: tempSecret.backupCodes
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'MFA setup failed' });
+  }
+});
+
+// Enable MFA
+app.post('/api/users/mfa/enable', auth, async (req, res) => {
+  try {
+    const { secret, backupCodes, token } = req.body;
+
+    if (!secret || !token || !backupCodes) {
+      return res.status(400).json({ msg: 'Missing MFA data' });
+    }
+
+    // Verify the TOTP token
+    const verified = speakeasy.totp.verify({
+      secret,
+      encoding: 'base32',
+      token: String(token),
+      window: 2
+    });
+
+    if (!verified) {
+      return res.status(400).json({ msg: 'Invalid MFA token' });
+    }
+
+    // Hash backup codes
+    const hashedBackupCodes = await Promise.all(
+      backupCodes.map(code => bcrypt.hash(code, 10))
+    );
+
+    // Enable MFA on user account
+    const user = req.userDoc;
+    user.mfa_enabled = true;
+    user.mfa_secret = secret;
+    user.mfa_backup_codes = hashedBackupCodes;
+    await user.save();
+
+    await logAction(user._id, 'MFA_ENABLED');
+
+    res.json({ msg: 'MFA enabled successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'MFA enable failed' });
+  }
+});
+
+// Verify MFA token during login
+app.post('/api/users/mfa/verify', async (req, res) => {
+  try {
+    const { userId, token } = req.body;
+
+    if (!userId || !token) {
+      return res.status(400).json({ msg: 'Missing userId or token' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user || !user.mfa_enabled) {
+      return res.status(400).json({ msg: 'MFA not enabled' });
+    }
+
+    // Verify TOTP token
+    const verified = speakeasy.totp.verify({
+      secret: user.mfa_secret,
+      encoding: 'base32',
+      token: String(token),
+      window: 2
+    });
+
+    if (!verified) {
+      return res.status(401).json({ msg: 'Invalid MFA token' });
+    }
+
+    // Create JWT token
+    const jwtToken = jwt.sign(
+      { id: user._id, role: user.role, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    user.sessionToken = generateSessionToken();
+    user.sessionExpiresAt = getSessionExpiryTime();
+    await user.save();
+
+    await logAction(user._id, 'MFA_VERIFIED');
+
+    res.json({
+      msg: 'MFA verification successful',
+      token: jwtToken,
+      user: sanitizeUser(user)
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'MFA verification failed' });
+  }
+});
+
+// ==================== PASSWORD MANAGEMENT ====================
+
+// Change password
+app.post('/api/users/password/change', auth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword, confirmPassword } = req.body;
+    const user = req.userDoc;
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      return res.status(400).json({ msg: 'Missing required fields' });
+    }
+
+    // Verify current password
+    const validPassword = await bcrypt.compare(currentPassword, user.password);
+    if (!validPassword) {
+      return res.status(401).json({ msg: 'Current password incorrect' });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ msg: 'New passwords do not match' });
+    }
+
+    if (!isStrongPassword(newPassword)) {
+      return res.status(400).json({
+        msg: 'Password must be 8+ chars with uppercase, lowercase, digit, and special char'
+      });
+    }
+
+    // Check password reuse
+    const reused = await checkPasswordReuse(user, newPassword, bcrypt);
+    if (reused) {
+      return res.status(400).json({
+        msg: 'Cannot reuse recent passwords. Use a different password.'
+      });
+    }
+
+    // Update password history
+    const newHash = await bcrypt.hash(newPassword, 12);
+    if (!user.passwordHistory) user.passwordHistory = [];
+    user.passwordHistory.push({ password: newHash, changedAt: new Date() });
+    if (user.passwordHistory.length > 10) {
+      user.passwordHistory.shift(); // Keep only last 10
+    }
+
+    user.password = newHash;
+    user.lastPasswordChange = new Date();
+    user.passwordExpiresAt = getPasswordExpiryDate();
+    await user.save();
+
+    await logAction(user._id, 'PASSWORD_CHANGED');
+
+    res.json({ msg: 'Password changed successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Password change failed' });
+  }
+});
+
+// Reset password (forgot)
+app.post('/api/users/password/reset', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ msg: 'Email required' });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      // Don't reveal if email exists
+      return res.status(200).json({
+        msg: 'If email exists, password reset link sent'
+      });
+    }
+
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+    // Store reset token (in real app, save to user model with expiry)
+    user.resetToken = resetTokenHash;
+    user.resetTokenExpires = new Date(Date.now() + 1 * 60 * 60 * 1000); // 1 hour
+    await user.save();
+
+    // In real app, send reset link via email
+    console.log(`Reset token for ${email}: ${resetToken}`);
+
+    await logAction(user._id, 'PASSWORD_RESET_REQUESTED');
+
+    res.json({
+      msg: 'If email exists, password reset link sent',
+      resetToken // Remove in production - send via email instead
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Password reset failed' });
+  }
+});
+
+// ==================== USER PROFILE ====================
+
+// Get user profile
+app.get('/api/users/profile', auth, async (req, res) => {
+  try {
+    const user = req.userDoc;
+    res.json({
+      user: sanitizeUser(user)
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Failed to fetch profile' });
+  }
+});
+
+// Update user profile
+app.put('/api/users/profile', auth, async (req, res) => {
+  try {
+    const { bio, avatar, profilePrivate } = req.body;
+    const user = req.userDoc;
+
+    // Validate inputs
+    if (bio && bio.length > 500) {
+      return res.status(400).json({ msg: 'Bio too long (max 500 chars)' });
+    }
+
+    // Update allowed fields only
+    if (bio) user.bio = bio;
+    if (typeof profilePrivate === 'boolean') user.profilePrivate = profilePrivate;
+    if (avatar && avatar.length < 5000) user.avatar = avatar; // Limit size
+
+    await user.save();
+
+    await logAction(user._id, 'PROFILE_UPDATED');
+
+    res.json({
+      msg: 'Profile updated',
+      user: sanitizeUser(user)
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Profile update failed' });
+  }
+});
+
+// ==================== POSTS ====================
+
+// Create post (authenticated users)
 app.post('/api/posts', auth, async (req, res) => {
-  const { title, content } = req.body;
-  if (!title || !content)
-    return res.status(400).json({ msg: 'Missing fields' });
+  try {
+    const { title, content } = req.body;
 
-  const post = await Post.create({ user: req.user.id, title, content });
-  await logAction(req.user.id, 'CREATE_POST');
-  res.status(201).json(post);
+    if (!title || !content) {
+      return res.status(400).json({ msg: 'Title and content required' });
+    }
+
+    if (title.length < 5 || title.length > 200) {
+      return res.status(400).json({ msg: 'Title must be 5-200 characters' });
+    }
+
+    if (content.length < 10 || content.length > 5000) {
+      return res.status(400).json({ msg: 'Content must be 10-5000 characters' });
+    }
+
+    const post = await Post.create({
+      user: req.user.id,
+      title,
+      content,
+      published: true
+    });
+
+    await logAction(req.user.id, 'POST_CREATED', { postId: post._id });
+
+    res.status(201).json({
+      msg: 'Post created',
+      post: await post.populate('user', 'username avatar')
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Post creation failed' });
+  }
 });
 
-app.get('/api/posts', async (req, res) => {
-  const posts = await Post.find()
-    .populate('user', 'username role')
-    .sort({ createdAt: -1 });
-  res.json(posts);
+// Get all posts
+app.get('/api/posts', apiLimiter, async (req, res) => {
+  try {
+    const posts = await Post.find({ published: true })
+      .populate('user', 'username avatar bio')
+      .sort({ createdAt: -1 })
+      .limit(50);
+
+    res.json({ posts, count: posts.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Failed to fetch posts' });
+  }
 });
 
-// COMMENTS
+// Get post by ID
+app.get('/api/posts/:id', apiLimiter, async (req, res) => {
+  try {
+    const post = await Post.findByIdAndUpdate(
+      req.params.id,
+      { $inc: { viewCount: 1 } }, // Increment view count
+      { new: true }
+    ).populate('user', 'username avatar bio');
+
+    if (!post) {
+      return res.status(404).json({ msg: 'Post not found' });
+    }
+
+    res.json({ post });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Failed to fetch post' });
+  }
+});
+
+// Update own post
+app.put('/api/posts/:id', auth, async (req, res) => {
+  try {
+    const { title, content } = req.body;
+    const post = await Post.findById(req.params.id);
+
+    if (!post) {
+      return res.status(404).json({ msg: 'Post not found' });
+    }
+
+    // Only author or admin can edit
+    if (post.user.toString() !== req.user.id && req.user.role !== 'Admin') {
+      return res.status(403).json({ msg: 'Cannot edit this post' });
+    }
+
+    if (title) post.title = title;
+    if (content) post.content = content;
+    post.updatedAt = new Date();
+
+    await post.save();
+    await logAction(req.user.id, 'POST_UPDATED', { postId: post._id });
+
+    res.json({ msg: 'Post updated', post });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Post update failed' });
+  }
+});
+
+// Delete post
+app.delete('/api/posts/:id', auth, async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id);
+
+    if (!post) {
+      return res.status(404).json({ msg: 'Post not found' });
+    }
+
+    if (post.user.toString() !== req.user.id && req.user.role !== 'Admin') {
+      return res.status(403).json({ msg: 'Cannot delete this post' });
+    }
+
+    await Post.findByIdAndDelete(req.params.id);
+    await logAction(req.user.id, 'POST_DELETED', { postId: post._id });
+
+    res.json({ msg: 'Post deleted' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Post deletion failed' });
+  }
+});
+
+// ==================== COMMENTS ====================
+
+// Create comment
 app.post('/api/comments', auth, async (req, res) => {
-  const { postId, content } = req.body;
-  if (!postId || !content)
-    return res.status(400).json({ msg: 'Missing fields' });
+  try {
+    const { postId, content } = req.body;
 
-  const comment = await Comment.create({
-    post: postId,
-    user: req.user.id,
-    content
-  });
+    if (!postId || !content) {
+      return res.status(400).json({ msg: 'Post ID and content required' });
+    }
 
-  await logAction(req.user.id, 'COMMENT');
-  res.status(201).json(comment);
+    if (content.length < 2 || content.length > 1000) {
+      return res.status(400).json({ msg: 'Comment must be 2-1000 characters' });
+    }
+
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({ msg: 'Post not found' });
+    }
+
+    const comment = await Comment.create({
+      post: postId,
+      user: req.user.id,
+      content
+    });
+
+    await logAction(req.user.id, 'COMMENT_CREATED', { postId });
+
+    res.status(201).json({
+      msg: 'Comment created',
+      comment: await comment.populate('user', 'username avatar')
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Comment creation failed' });
+  }
 });
 
-// PAYMENTS (SQUARE SANDBOX)
+// Get comments for post
+app.get('/api/posts/:postId/comments', apiLimiter, async (req, res) => {
+  try {
+    const comments = await Comment.find({ post: req.params.postId })
+      .populate('user', 'username avatar')
+      .sort({ createdAt: -1 });
+
+    res.json({ comments, count: comments.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Failed to fetch comments' });
+  }
+});
+
+// ==================== PAYMENTS ====================
+
+// Create payment (Square sandbox)
 app.post('/api/payments', auth, async (req, res) => {
   try {
-    const { amount } = req.body;
-    if (!amount)
-      return res.status(400).json({ msg: 'Amount required' });
+    const { amount, sourceId } = req.body;
 
+    if (!amount || !sourceId) {
+      return res.status(400).json({ msg: 'Amount and sourceId required' });
+    }
+
+    if (amount < 1 || amount > 50000) {
+      return res.status(400).json({ msg: 'Invalid amount' });
+    }
+
+    // Create payment with Square
     const response = await squareClient.paymentsApi.createPayment({
-      sourceId: 'cnon:card-nonce-ok',
+      sourceId,
       idempotencyKey: crypto.randomUUID(),
       amountMoney: {
         amount: parseInt(amount),
@@ -157,22 +710,97 @@ app.post('/api/payments', auth, async (req, res) => {
 
     const payment = response.result.payment;
 
-    await Payment.create({
+    // Store payment record
+    const paymentRecord = await Payment.create({
       user: req.user.id,
       squarePaymentId: payment.id,
       amount: payment.amountMoney.amount,
+      currency: payment.amountMoney.currency,
       status: payment.status
     });
 
-    await logAction(req.user.id, 'PAYMENT', { paymentId: payment.id });
-    res.json(payment);
+    // If successful, update user to premium
+    if (payment.status === 'COMPLETED') {
+      const user = await User.findByIdAndUpdate(
+        req.user.id,
+        { isPremium: true },
+        { new: true }
+      );
+      await logAction(req.user.id, 'PREMIUM_ACTIVATED', { paymentId: payment.id });
+    }
+
+    await logAction(req.user.id, 'PAYMENT_CREATED', { paymentId: payment.id });
+
+    res.json({
+      msg: 'Payment processed',
+      payment: {
+        id: paymentRecord._id,
+        status: payment.status,
+        amount: payment.amountMoney.amount
+      }
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ msg: 'Payment failed' });
+    res.status(500).json({ msg: 'Payment processing failed' });
   }
 });
 
-// START
+// ==================== ADMIN FEATURES ====================
+
+// Get audit logs (admin only)
+app.get('/api/admin/audit-logs', auth, checkRole(['Admin']), async (req, res) => {
+  try {
+    const logs = await AuditLog.find()
+      .populate('user', 'username email')
+      .sort({ createdAt: -1 })
+      .limit(1000);
+
+    res.json({ logs, count: logs.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Failed to fetch audit logs' });
+  }
+});
+
+// Get user by ID (admin only)
+app.get('/api/admin/users/:id', auth, checkRole(['Admin']), async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+
+    res.json({ user: sanitizeUser(user) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Failed to fetch user' });
+  }
+});
+
+// Lock user account (admin only)
+app.post('/api/admin/users/:id/lock', auth, checkRole(['Admin']), async (req, res) => {
+  try {
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { lockUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) }, // 7 days
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+
+    await logAction(req.user.id, 'ADMIN_LOCKED_USER', { targetUser: user._id });
+
+    res.json({ msg: 'User account locked', user: sanitizeUser(user) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'User lock failed' });
+  }
+});
+
+// Start server
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`🎮 Gaming Forum API running on http://localhost:${PORT}`);
+  console.log(`📝 Remember to set JWT_SECRET and SQUARE_ACCESS_TOKEN in .env`);
 });
