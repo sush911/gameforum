@@ -7,9 +7,11 @@ const isValidEmail = (email) => {
   return validator.isEmail(email);
 };
 
-// Validate password strength
+// Check if password meets security requirements
+// Must have: 8+ chars, uppercase, lowercase, digit, special char
 const isStrongPassword = (password) => {
-  // Min 8 chars, 1 uppercase, 1 lowercase, 1 digit, 1 special char
+  if (!password || typeof password !== 'string') return false;
+  // Regex: at least 1 lowercase, 1 uppercase, 1 digit, 1 special char, min 8 chars
   return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/.test(password);
 };
 
