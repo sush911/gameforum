@@ -152,80 +152,80 @@ app.post('/api/users/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    // basic validation
     if (!email || !password) {
-      return res.status(400).json({ msg: 'Email and password required' });
+      return res.status(400).json({ msg: 'email and password needed' });
     }
 
+    // find user
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(401).json({ msg: 'Invalid credentials' });
+      return res.status(401).json({ msg: 'wrong email or password' });
     }
 
-    // Check if account is locked
+    // check if locked
     if (isAccountLocked(user)) {
+      const minutesLeft = Math.ceil((new Date(user.lockUntil) - new Date()) / 60000);
       return res.status(401).json({
-        msg: 'Account locked due to multiple failed attempts. Try again later.'
+        msg: `account locked, try again in ${minutesLeft} mins`
       });
     }
 
-    // Check password
+    // check password
     const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) {
-      // Increment failed attempts
       user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
       
       if (user.failedLoginAttempts >= 5) {
-        // Lock account for 30 minutes
         user.lockUntil = new Date(Date.now() + 30 * 60 * 1000);
-        await logAction(user._id, 'ACCOUNT_LOCKED', { reason: 'Failed login attempts' });
+        await logAction(user._id, 'ACCOUNT_LOCKED', { reason: 'too many tries' });
       }
       
       await user.save();
-      return res.status(401).json({ msg: 'Invalid credentials' });
+      return res.status(401).json({ msg: 'wrong email or password' });
     }
 
-    // Check password expiry
+    // check password expired
     if (isPasswordExpired(user)) {
-      return res.status(403).json({ msg: 'Password expired. Please reset it.' });
+      return res.status(403).json({ msg: 'password expired, reset it' });
     }
 
-    // Reset failed attempts and unlock
+    // reset failed tries
     user.failedLoginAttempts = 0;
     user.lockUntil = null;
     user.lastLogin = new Date();
     await user.save();
 
-    // Check if MFA is enabled
+    // check mfa
     if (user.mfa_enabled) {
       return res.status(200).json({
-        msg: 'MFA required',
+        msg: 'need mfa',
         requireMFA: true,
         tempUserId: user._id
       });
     }
 
-    // Create JWT token
+    // create token
     const token = jwt.sign(
       { id: user._id, role: user.role, email: user.email },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
 
-    // Store session token
     user.sessionToken = generateSessionToken();
     user.sessionExpiresAt = getSessionExpiryTime();
     await user.save();
 
-    await logAction(user._id, 'USER_LOGIN', { ip: req.ip });
+    await logAction(user._id, 'LOGIN', { ip: req.ip });
 
     res.json({
-      msg: 'Login successful',
+      msg: 'login ok',
       token,
       user: sanitizeUser(user)
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ msg: 'Login failed' });
+    res.status(500).json({ msg: 'login error' });
   }
 });
 
