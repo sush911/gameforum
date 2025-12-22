@@ -1,9 +1,9 @@
 const mongoose = require('mongoose');
 
-const auditSchema = new mongoose.Schema({
+const AuditLogSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  action: { type: String, required: true },
-  metadata: { type: Object },
+  action: String,
+  metadata: Object
 }, { timestamps: true });
 
-module.exports = mongoose.model('AuditLog', auditSchema);
+module.exports = mongoose.model('AuditLog', AuditLogSchema);
