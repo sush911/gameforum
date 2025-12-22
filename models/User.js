@@ -22,9 +22,18 @@ const UserSchema = new mongoose.Schema(
       default: null
     },
 
+    // 🔐 MFA fields
     mfa_enabled: {
       type: Boolean,
       default: false
+    },
+    mfa_otp: {
+      type: String,
+      default: null
+    },
+    mfa_expires: {
+      type: Date,
+      default: null
     }
   },
   { timestamps: true }
