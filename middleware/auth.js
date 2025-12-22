@@ -17,3 +17,12 @@ module.exports = (req, res, next) => {
     return res.status(401).json({ msg: 'Token is not valid' });
   }
 };
+
+app.post('/api/users/enable-mfa', auth, async (req, res) => {
+  req.userDoc.mfa_enabled = true;
+  await req.userDoc.save();
+
+  await logAction(req.user.id, 'MFA enabled');
+
+  res.json({ msg: 'MFA enabled successfully' });
+});
