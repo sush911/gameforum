@@ -31,13 +31,13 @@ connectDB();
    RATE LIMITERS
 ======================= */
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
+  windowMs: 15 * 60 * 1000, // 15 mins
+  max: 10, // 10 requests per window
   message: 'Too many login attempts. Try again later.'
 });
 
 /* =======================
-   HELPERS
+   HELPER FUNCTIONS
 ======================= */
 const logAction = async (userId, action, metadata = {}) => {
   try {

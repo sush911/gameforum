@@ -4,27 +4,19 @@ const UserSchema = new mongoose.Schema({
   username: {
     type: String,
     required: true,
-    minlength: 3,
-    maxlength: 30
+    minlength: 3
   },
 
   email: {
     type: String,
     required: true,
     unique: true,
-    lowercase: true,
-    match: [/^\S+@\S+\.\S+$/, 'Invalid email format']
+    lowercase: true
   },
 
   password: {
     type: String,
     required: true
-  },
-
-  // Store last 3 password hashes to prevent reuse
-  passwordHistory: {
-    type: [String],
-    default: []
   },
 
   role: {
@@ -38,9 +30,7 @@ const UserSchema = new mongoose.Schema({
     default: 0
   },
 
-  lockUntil: {
-    type: Date
-  },
+  lockUntil: Date,
 
   mfa_enabled: {
     type: Boolean,
@@ -49,9 +39,6 @@ const UserSchema = new mongoose.Schema({
 
   mfa_otp: String,
   mfa_expires: Date
-
-}, {
-  timestamps: true
-});
+}, { timestamps: true });
 
 module.exports = mongoose.model('User', UserSchema);
