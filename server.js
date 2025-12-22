@@ -3,6 +3,7 @@ const cors = require('cors');
 require('dotenv').config();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
 
 const connectDB = require('./db');
 
@@ -22,33 +23,38 @@ const PORT = process.env.PORT || 3000;
    GLOBAL MIDDLEWARE
 ======================= */
 app.use(cors());
-app.use(express.json()); // IMPORTANT: fixes req.body undefined
-
+app.use(express.json()); // REQUIRED for req.body
 connectDB();
 
 /* =======================
-   HELPER FUNCTIONS
+   RATE LIMITING
+======================= */
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  message: { msg: 'Too many login attempts. Try again later.' }
+});
+
+/* =======================
+   HELPERS
 ======================= */
 const logAction = async (userId, action, metadata = {}) => {
   try {
     await AuditLog.create({
       user: userId,
       action,
-      metadata,
-      ip: metadata.ip || null
+      metadata
     });
   } catch (err) {
     console.error('Audit log error:', err.message);
   }
 };
 
-const checkRole = (roles) => {
-  return (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ msg: 'Access denied' });
-    }
-    next();
-  };
+const checkRole = (roles) => (req, res, next) => {
+  if (!roles.includes(req.user.role)) {
+    return res.status(403).json({ msg: 'Access denied' });
+  }
+  next();
 };
 
 const isStrongPassword = (password) => {
@@ -59,7 +65,7 @@ const isStrongPassword = (password) => {
    TEST ROUTE
 ======================= */
 app.get('/', (req, res) => {
-  res.send('Secure Forum API (MongoDB) is running');
+  res.send('Secure Forum API (MongoDB) running');
 });
 
 /* =======================
@@ -72,33 +78,31 @@ app.post('/api/users/register', async (req, res) => {
     const { username, email, password } = req.body;
 
     if (!username || !email || !password)
-      return res.status(400).json({ msg: 'All fields are required' });
+      return res.status(400).json({ msg: 'All fields required' });
 
-    if (!isStrongPassword(password)) {
+    if (!isStrongPassword(password))
       return res.status(400).json({
-        msg: 'Password must be 8+ chars with upper, lower, number & symbol'
+        msg: 'Password must contain upper, lower, number & symbol'
       });
-    }
 
-    const existingUser = await User.findOne({ email });
-    if (existingUser)
-      return res.status(400).json({ msg: 'Email already exists' });
+    const exists = await User.findOne({ email });
+    if (exists) return res.status(400).json({ msg: 'Email already exists' });
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashed = await bcrypt.hash(password, 10);
 
     const user = await User.create({
       username,
       email,
-      password: hashedPassword,
+      password: hashed,
       role: 'User'
     });
 
-    await logAction(user._id, 'User registered', { email });
+    await logAction(user._id, 'User registered');
 
     res.status(201).json({
       msg: 'User registered',
       user: {
-        _id: user._id,
+        id: user._id,
         username: user.username,
         email: user.email,
         role: user.role
@@ -110,41 +114,37 @@ app.post('/api/users/register', async (req, res) => {
   }
 });
 
-// LOGIN
-app.post('/api/users/login', async (req, res) => {
+// LOGIN (Rate-limited + lockout)
+app.post('/api/users/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
     if (!email || !password)
-      return res.status(400).json({ msg: 'All fields are required' });
+      return res.status(400).json({ msg: 'All fields required' });
 
     const user = await User.findOne({ email });
-    if (!user)
-      return res.status(400).json({ msg: 'Invalid credentials' });
+    if (!user) return res.status(400).json({ msg: 'Invalid credentials' });
 
-    // 🔒 Check if account is locked
+    // Account locked
     if (user.lockUntil && user.lockUntil > Date.now()) {
-      return res.status(403).json({
-        msg: 'Account locked. Try again later.'
-      });
+      return res.status(403).json({ msg: 'Account locked. Try later.' });
     }
 
-    const validPassword = await bcrypt.compare(password, user.password);
+    const valid = await bcrypt.compare(password, user.password);
 
-    if (!validPassword) {
+    if (!valid) {
       user.failedLoginAttempts += 1;
 
-      // Lock account after 5 failed attempts
       if (user.failedLoginAttempts >= 5) {
-        user.lockUntil = Date.now() + 15 * 60 * 1000; // 15 minutes
-        await logAction(user._id, 'Account locked due to failed logins');
+        user.lockUntil = Date.now() + 15 * 60 * 1000;
+        await logAction(user._id, 'Account locked');
       }
 
       await user.save();
       return res.status(400).json({ msg: 'Invalid credentials' });
     }
 
-    // Reset counters on success
+    // Reset on success
     user.failedLoginAttempts = 0;
     user.lockUntil = null;
     await user.save();
@@ -164,15 +164,14 @@ app.post('/api/users/login', async (req, res) => {
   }
 });
 
-/* =
-   POSTS ROUTES
-= */
+/* =======================
+   POSTS
+======================= */
 
 // CREATE POST
 app.post('/api/posts', auth, async (req, res) => {
   try {
     const { title, content } = req.body;
-
     if (!title || !content)
       return res.status(400).json({ msg: 'All fields required' });
 
@@ -182,8 +181,7 @@ app.post('/api/posts', auth, async (req, res) => {
       content
     });
 
-    await logAction(req.user.id, 'Created post', { postId: post._id });
-
+    await logAction(req.user.id, 'Post created', { postId: post._id });
     res.status(201).json(post);
   } catch (err) {
     console.error(err);
@@ -193,73 +191,43 @@ app.post('/api/posts', auth, async (req, res) => {
 
 // GET POSTS
 app.get('/api/posts', async (req, res) => {
-  try {
-    const posts = await Post.find()
-      .populate('user', 'username email role')
-      .sort({ createdAt: -1 });
-
-    res.json(posts);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send('Server error');
-  }
+  const posts = await Post.find()
+    .populate('user', 'username role')
+    .sort({ createdAt: -1 });
+  res.json(posts);
 });
 
-// DELETE POST (ADMIN ONLY)
+// DELETE POST (ADMIN)
 app.delete('/api/posts/:id', auth, checkRole(['Admin']), async (req, res) => {
-  try {
-    await Post.findByIdAndDelete(req.params.id);
-    await logAction(req.user.id, 'Admin deleted post', { postId: req.params.id });
-
-    res.json({ msg: 'Post deleted' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).send('Server error');
-  }
+  await Post.findByIdAndDelete(req.params.id);
+  await logAction(req.user.id, 'Post deleted', { postId: req.params.id });
+  res.json({ msg: 'Post deleted' });
 });
 
 /* =======================
-   COMMENTS ROUTES
+   COMMENTS
 ======================= */
 
-// CREATE COMMENT
 app.post('/api/comments', auth, async (req, res) => {
-  try {
-    const { postId, content } = req.body;
+  const { postId, content } = req.body;
+  if (!postId || !content)
+    return res.status(400).json({ msg: 'All fields required' });
 
-    if (!postId || !content)
-      return res.status(400).json({ msg: 'All fields required' });
+  const comment = await Comment.create({
+    post: postId,
+    user: req.user.id,
+    content
+  });
 
-    const comment = await Comment.create({
-      post: postId,
-      user: req.user.id,
-      content
-    });
-
-    await logAction(req.user.id, 'Created comment', {
-      commentId: comment._id,
-      postId
-    });
-
-    res.status(201).json(comment);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send('Server error');
-  }
+  await logAction(req.user.id, 'Comment created', { postId });
+  res.status(201).json(comment);
 });
 
-// GET COMMENTS FOR A POST
 app.get('/api/comments/:postId', async (req, res) => {
-  try {
-    const comments = await Comment.find({ post: req.params.postId })
-      .populate('user', 'username email role')
-      .sort({ createdAt: 1 });
-
-    res.json(comments);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send('Server error');
-  }
+  const comments = await Comment.find({ post: req.params.postId })
+    .populate('user', 'username role')
+    .sort({ createdAt: 1 });
+  res.json(comments);
 });
 
 /* =======================
@@ -267,9 +235,8 @@ app.get('/api/comments/:postId', async (req, res) => {
 ======================= */
 app.get('/api/admin/audit-logs', auth, checkRole(['Admin']), async (req, res) => {
   const logs = await AuditLog.find()
-    .populate('user', 'username email role')
+    .populate('user', 'username role')
     .sort({ createdAt: -1 });
-
   res.json(logs);
 });
 
@@ -279,4 +246,3 @@ app.get('/api/admin/audit-logs', auth, checkRole(['Admin']), async (req, res) =>
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
-
