@@ -1,62 +1,67 @@
 const validator = require('validator');
 const crypto = require('crypto');
 
-// Check if email is valid format
+// username validation - 3-30 chars, letters numbers and underscore only
+const isValidUsername = (username) => {
+  if (!username || typeof username !== 'string') return false;
+  return /^[a-zA-Z0-9_]{3,30}$/.test(username);
+};
+
+// just check email is valid
 const isValidEmail = (email) => {
   if (!email || typeof email !== 'string') return false;
   return validator.isEmail(email);
 };
 
-// Check if password meets security requirements
-// Must have: 8+ chars, uppercase, lowercase, digit, special char
+// password needs uppercase lowercase number and special char
+// min 8 chars to avoid brute force
 const isStrongPassword = (password) => {
   if (!password || typeof password !== 'string') return false;
-  // Regex: at least 1 lowercase, 1 uppercase, 1 digit, 1 special char, min 8 chars
   return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/.test(password);
 };
 
-// Check password history to prevent reuse
+// check if user is trying to reuse old passwords
 const checkPasswordReuse = async (user, newPassword, bcrypt) => {
   if (!user.passwordHistory || user.passwordHistory.length === 0) return false;
   
-  // Check last 5 passwords
+  // check last 5 passwords to prevent reuse
   for (let i = 0; i < Math.min(5, user.passwordHistory.length); i++) {
     const match = await bcrypt.compare(newPassword, user.passwordHistory[i].password);
-    if (match) return true; // Password was reused
+    if (match) return true;
   }
   return false;
 };
 
-// Check if account is locked
+// check if account locked due to failed attempts
 const isAccountLocked = (user) => {
   if (!user.lockUntil) return false;
   return new Date() < new Date(user.lockUntil);
 };
 
-// Check if password has expired (90 days)
+// check if password expired (90 days)
 const isPasswordExpired = (user) => {
   if (!user.passwordExpiresAt) return false;
   return new Date() > new Date(user.passwordExpiresAt);
 };
 
-// Generate password expiry date (90 days from now)
+// set password to expire 90 days from now
 const getPasswordExpiryDate = () => {
   const date = new Date();
   date.setDate(date.getDate() + 90);
   return date;
 };
 
-// Generate session token
+// generate random session token
 const generateSessionToken = () => crypto.randomBytes(32).toString('hex');
 
-// Get session expiry time (24 hours)
+// session expires after 24 hours
 const getSessionExpiryTime = () => {
   const date = new Date();
   date.setHours(date.getHours() + 24);
   return date;
 };
 
-// Sanitize user data for response
+// remove sensitive fields from user before sending in response
 const sanitizeUser = (user) => {
   const obj = user.toObject();
   delete obj.password;
@@ -67,12 +72,13 @@ const sanitizeUser = (user) => {
   return obj;
 };
 
-// Rate limit check helper
+// simple check if too many attempts
 const checkRateLimit = (attempts, maxAttempts = 5) => {
   return attempts >= maxAttempts;
 };
 
 module.exports = {
+  isValidUsername,
   isValidEmail,
   isStrongPassword,
   checkPasswordReuse,
