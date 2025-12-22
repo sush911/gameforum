@@ -3,8 +3,8 @@ const cors = require('cors');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
-const crypto = require('crypto');
 const { Client, Environment } = require('square');
+
 require('dotenv').config();
 
 const connectDB = require('./db');
@@ -21,196 +21,162 @@ const auth = require('./middleware/auth');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Middleware
 app.use(cors());
 app.use(express.json());
-
 connectDB();
 
-/* rate limit */
+// Rate limiter for login
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10
+  max: 10,
+  message: 'Too many login attempts. Try later.'
 });
 
-/* square sandbox */
+// Helpers
+const logAction = async (userId, action, metadata = {}) => {
+  try {
+    await AuditLog.create({ user: userId, action, metadata });
+  } catch (err) {
+    console.error('Audit log error:', err.message);
+  }
+};
+
+const checkRole = (roles) => (req, res, next) => {
+  if (!roles.includes(req.user.role)) return res.status(403).json({ msg: 'Access denied' });
+  next();
+};
+
+const isStrongPassword = (password) => /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/.test(password);
+const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+// Square client (sandbox)
 const squareClient = new Client({
   environment: Environment.Sandbox,
   accessToken: process.env.SQUARE_ACCESS_TOKEN
 });
-const paymentsApi = squareClient.paymentsApi;
 
-/* helpers */
-const logAction = async (userId, action, metadata = {}) => {
-  try {
-    await AuditLog.create({ user: userId, action, metadata });
-  } catch {}
-};
+// Test route
+app.get('/', (req, res) => res.send('Secure Forum API running'));
 
-const checkRole = (roles) => (req, res, next) => {
-  if (!roles.includes(req.user.role)) return res.status(403).json({ msg: 'Forbidden' });
-  next();
-};
+// ---------------- USERS ----------------
 
-const strongPassword = (p) =>
-  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/.test(p);
-
-const generateOTP = () =>
-  Math.floor(100000 + Math.random() * 900000).toString();
-
-/* test */
-app.get('/', (_, res) => res.send('Secure Forum API running'));
-
-/* register */
+// Register
 app.post('/api/users/register', async (req, res) => {
   try {
     const { username, email, password } = req.body;
-    if (!username || !email || !password)
-      return res.status(400).json({ msg: 'All fields required' });
+    if (!username || !email || !password) return res.status(400).json({ msg: 'All fields required' });
+    if (!isStrongPassword(password)) return res.status(400).json({ msg: 'Weak password' });
 
-    if (!strongPassword(password))
-      return res.status(400).json({ msg: 'Weak password' });
+    const exists = await User.findOne({ email });
+    if (exists) return res.status(400).json({ msg: 'Email exists' });
 
-    if (await User.findOne({ email }))
-      return res.status(400).json({ msg: 'Email exists' });
-
-    const user = await User.create({
-      username,
-      email,
-      password: await bcrypt.hash(password, 10),
-      role: 'User'
-    });
-
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await User.create({ username, email, password: hashedPassword, role: 'User' });
     await logAction(user._id, 'User registered');
-    res.status(201).json({ msg: 'Registered' });
-  } catch {
+
+    res.status(201).json({ msg: 'User registered', user: { _id: user._id, username, email, role: user.role } });
+  } catch (err) {
+    console.error(err);
     res.status(500).send('Server error');
   }
 });
 
-/* login */
+// Login
 app.post('/api/users/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ msg: 'All fields required' });
 
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ msg: 'Invalid credentials' });
 
-    if (user.lockUntil && user.lockUntil > Date.now())
-      return res.status(403).json({ msg: 'Account locked' });
+    if (user.lockUntil && user.lockUntil > Date.now()) return res.status(403).json({ msg: 'Account locked' });
 
-    const ok = await bcrypt.compare(password, user.password);
-    if (!ok) {
-      user.failedLoginAttempts += 1;
-      if (user.failedLoginAttempts >= 5)
-        user.lockUntil = Date.now() + 15 * 60 * 1000;
+    const valid = await bcrypt.compare(password, user.password);
+    if (!valid) {
+      user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+      if (user.failedLoginAttempts >= 5) user.lockUntil = Date.now() + 15*60*1000;
       await user.save();
       return res.status(400).json({ msg: 'Invalid credentials' });
     }
 
     user.failedLoginAttempts = 0;
     user.lockUntil = null;
-
-    if (user.mfa_enabled) {
-      const otp = generateOTP();
-      user.mfa_otp = await bcrypt.hash(otp, 10);
-      user.mfa_expires = Date.now() + 5 * 60 * 1000;
-      await user.save();
-
-      console.log(`MFA OTP for ${user.email}: ${otp}`);
-      return res.json({ msg: 'MFA required', userId: user._id });
-    }
-
     await user.save();
-    const token = jwt.sign({ id: user._id, role: user.role },
-      process.env.JWT_SECRET, { expiresIn: '1h' });
 
-    await logAction(user._id, 'Login');
-    res.json({ token });
-  } catch {
+    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    await logAction(user._id, 'User logged in');
+
+    res.json({ msg: 'Login success', token });
+  } catch (err) {
+    console.error(err);
     res.status(500).send('Server error');
   }
 });
 
-/* verify mfa */
-app.post('/api/users/verify-mfa', async (req, res) => {
-  const { userId, otp } = req.body;
-  const user = await User.findById(userId);
-
-  if (!user || !user.mfa_otp || user.mfa_expires < Date.now())
-    return res.status(400).json({ msg: 'Invalid OTP' });
-
-  if (!(await bcrypt.compare(otp, user.mfa_otp)))
-    return res.status(400).json({ msg: 'Invalid OTP' });
-
-  user.mfa_otp = null;
-  user.mfa_expires = null;
-  await user.save();
-
-  const token = jwt.sign({ id: user._id, role: user.role },
-    process.env.JWT_SECRET, { expiresIn: '1h' });
-
-  await logAction(user._id, 'MFA verified');
-  res.json({ token });
-});
-
-/* enable mfa */
-app.post('/api/users/enable-mfa', auth, async (req, res) => {
-  req.userDoc.mfa_enabled = true;
-  await req.userDoc.save();
-  await logAction(req.user.id, 'MFA enabled');
-  res.json({ msg: 'MFA enabled' });
-});
-
-/* posts */
+// ---------------- POSTS ----------------
 app.post('/api/posts', auth, async (req, res) => {
-  const post = await Post.create({
-    user: req.user.id,
-    title: req.body.title,
-    content: req.body.content
-  });
-  await logAction(req.user.id, 'Post created');
+  const { title, content } = req.body;
+  if (!title || !content) return res.status(400).json({ msg: 'All fields required' });
+
+  const post = await Post.create({ user: req.user.id, title, content });
+  await logAction(req.user.id, 'Created post', { postId: post._id });
   res.status(201).json(post);
 });
 
-app.get('/api/posts', async (_, res) => {
-  const posts = await Post.find()
-    .populate('user', 'username role')
-    .sort({ createdAt: -1 });
+app.get('/api/posts', async (req, res) => {
+  const posts = await Post.find().populate('user', 'username role').sort({ createdAt: -1 });
   res.json(posts);
 });
 
-/* comments */
+app.delete('/api/posts/:id', auth, checkRole(['Admin']), async (req, res) => {
+  await Post.findByIdAndDelete(req.params.id);
+  await logAction(req.user.id, 'Admin deleted post');
+  res.json({ msg: 'Post deleted' });
+});
+
+// ---------------- COMMENTS ----------------
 app.post('/api/comments', auth, async (req, res) => {
-  const comment = await Comment.create({
-    post: req.body.postId,
-    user: req.user.id,
-    content: req.body.content
-  });
-  await logAction(req.user.id, 'Comment created');
+  const { postId, content } = req.body;
+  if (!postId || !content) return res.status(400).json({ msg: 'All fields required' });
+
+  const comment = await Comment.create({ post: postId, user: req.user.id, content });
+  await logAction(req.user.id, 'Created comment', { commentId: comment._id, postId });
   res.status(201).json(comment);
 });
 
-/* audit logs */
-app.get('/api/admin/audit-logs', auth, checkRole(['Admin']), async (_, res) => {
-  const logs = await AuditLog.find()
-    .populate('user', 'username role')
-    .sort({ createdAt: -1 });
+app.get('/api/comments/:postId', async (req, res) => {
+  const comments = await Comment.find({ post: req.params.postId }).populate('user', 'username role').sort({ createdAt: 1 });
+  res.json(comments);
+});
+
+// ---------------- AUDIT LOGS ----------------
+app.get('/api/admin/audit-logs', auth, checkRole(['Admin']), async (req, res) => {
+  const logs = await AuditLog.find().populate('user', 'username role').sort({ createdAt: -1 });
   res.json(logs);
 });
 
-/* sandbox payment */
+// ---------------- PAYMENT (SQUARE SANDBOX) ----------------
 app.post('/api/payments', auth, async (req, res) => {
-  const { nonce, amount } = req.body;
-  const response = await paymentsApi.createPayment({
-    sourceId: nonce,
-    idempotencyKey: crypto.randomUUID(),
-    amountMoney: { amount, currency: 'USD' }
-  });
+  try {
+    const { sourceId, amount } = req.body; // sourceId from frontend card nonce
+    if (!sourceId || !amount) return res.status(400).json({ msg: 'Missing payment data' });
 
-  await logAction(req.user.id, 'Payment', { amount });
-  res.json(response.result.payment);
+    const paymentsApi = squareClient.paymentsApi;
+    const response = await paymentsApi.createPayment({
+      sourceId,
+      idempotencyKey: `${req.user.id}-${Date.now()}`,
+      amountMoney: { amount: parseInt(amount*100), currency: 'USD' }
+    });
+
+    await logAction(req.user.id, 'Payment processed', { paymentId: response.result.payment.id });
+    res.json({ msg: 'Payment success', payment: response.result.payment });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Payment error', error: err.message });
+  }
 });
 
-app.listen(PORT, () =>
-  console.log(`Server running on http://localhost:${PORT}`)
-);
+// ---------------- START SERVER ----------------
+app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
