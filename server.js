@@ -122,9 +122,32 @@ app.post('/api/users/login', async (req, res) => {
     if (!user)
       return res.status(400).json({ msg: 'Invalid credentials' });
 
+    // 🔒 Check if account is locked
+    if (user.lockUntil && user.lockUntil > Date.now()) {
+      return res.status(403).json({
+        msg: 'Account locked. Try again later.'
+      });
+    }
+
     const validPassword = await bcrypt.compare(password, user.password);
-    if (!validPassword)
+
+    if (!validPassword) {
+      user.failedLoginAttempts += 1;
+
+      // Lock account after 5 failed attempts
+      if (user.failedLoginAttempts >= 5) {
+        user.lockUntil = Date.now() + 15 * 60 * 1000; // 15 minutes
+        await logAction(user._id, 'Account locked due to failed logins');
+      }
+
+      await user.save();
       return res.status(400).json({ msg: 'Invalid credentials' });
+    }
+
+    // Reset counters on success
+    user.failedLoginAttempts = 0;
+    user.lockUntil = null;
+    await user.save();
 
     const token = jwt.sign(
       { id: user._id, role: user.role },
@@ -141,9 +164,9 @@ app.post('/api/users/login', async (req, res) => {
   }
 });
 
-/* =======================
+/* =
    POSTS ROUTES
-======================= */
+= */
 
 // CREATE POST
 app.post('/api/posts', auth, async (req, res) => {
