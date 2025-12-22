@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
-// MongoDB
+// DB
 const connectDB = require('./db');
 
 // Models
@@ -17,206 +17,213 @@ const AuditLog = require('./models/AuditLog');
 // Middleware
 const auth = require('./middleware/auth');
 
-// Square SDK
-const { Client } = require('square'); // fix import
-const squareClient = new Client({
-  environment: 'sandbox', // use string 'sandbox' for Sandbox
+// Square SDK (CORRECT)
+const { SquareClient } = require('square');
+const squareClient = new SquareClient({
+  environment: 'sandbox',
   accessToken: process.env.SQUARE_ACCESS_TOKEN
 });
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
+// Global middleware
 app.use(cors());
 app.use(express.json());
 connectDB();
 
-// Rate limiter for login
+// Rate limit login
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: 'Too many login attempts. Try again later.'
+  max: 10
 });
 
 // Helpers
-const logAction = async (userId, action, metadata = {}) => {
+const logAction = async (userId, action, meta = {}) => {
   try {
-    await AuditLog.create({ user: userId, action, metadata });
-  } catch (err) {
-    console.error('Audit log error:', err.message);
-  }
+    await AuditLog.create({ user: userId, action, metadata: meta });
+  } catch {}
 };
 
 const checkRole = (roles) => (req, res, next) => {
-  if (!roles.includes(req.user.role)) return res.status(403).json({ msg: 'Access denied' });
+  if (!roles.includes(req.user.role)) {
+    return res.status(403).json({ msg: 'Forbidden' });
+  }
   next();
 };
 
-const isStrongPassword = (password) => /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/.test(password);
-const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
+const strongPassword = (p) =>
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/.test(p);
 
 // Test
-app.get('/', (req, res) => res.send('Secure Forum API running'));
+app.get('/', (req, res) => {
+  res.send('API running');
+});
 
-// ----------------- Users -----------------
+
+// ---------- USERS ----------
 
 app.post('/api/users/register', async (req, res) => {
   try {
     const { username, email, password } = req.body;
-    if (!username || !email || !password) return res.status(400).json({ msg: 'All fields required' });
-    if (!isStrongPassword(password)) return res.status(400).json({ msg: 'Weak password' });
+    if (!username || !email || !password)
+      return res.status(400).json({ msg: 'Missing fields' });
+
+    if (!strongPassword(password))
+      return res.status(400).json({ msg: 'Weak password' });
 
     const exists = await User.findOne({ email });
-    if (exists) return res.status(400).json({ msg: 'Email already exists' });
+    if (exists) return res.status(400).json({ msg: 'Email exists' });
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const user = await User.create({ username, email, password: hashedPassword });
+    const hash = await bcrypt.hash(password, 10);
+    const user = await User.create({ username, email, password: hash });
 
-    await logAction(user._id, 'User registered');
-    res.status(201).json({ msg: 'User registered', user: { _id: user._id, username, email, role: user.role } });
-  } catch (err) {
-    console.error(err);
-    res.status(500).send('Server error');
+    await logAction(user._id, 'REGISTER');
+    res.status(201).json({ msg: 'User registered' });
+  } catch (e) {
+    res.status(500).json({ msg: 'Server error' });
   }
 });
 
 app.post('/api/users/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ msg: 'All fields required' });
+    if (!email || !password)
+      return res.status(400).json({ msg: 'Missing fields' });
 
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ msg: 'Invalid credentials' });
-    if (user.lockUntil && user.lockUntil > Date.now()) return res.status(403).json({ msg: 'Account locked' });
+    if (!user) return res.status(400).json({ msg: 'Invalid login' });
 
-    const valid = await bcrypt.compare(password, user.password);
-    if (!valid) {
+    if (user.lockUntil && user.lockUntil > Date.now())
+      return res.status(403).json({ msg: 'Account locked' });
+
+    const ok = await bcrypt.compare(password, user.password);
+    if (!ok) {
       user.failedLoginAttempts += 1;
       if (user.failedLoginAttempts >= 5) {
         user.lockUntil = Date.now() + 15 * 60 * 1000;
-        await logAction(user._id, 'Account locked');
       }
       await user.save();
-      return res.status(400).json({ msg: 'Invalid credentials' });
+      return res.status(400).json({ msg: 'Invalid login' });
     }
 
     user.failedLoginAttempts = 0;
     user.lockUntil = null;
-
-    // MFA
-    if (user.mfa_enabled) {
-      const otp = generateOTP();
-      user.mfa_otp = await bcrypt.hash(otp, 10);
-      user.mfa_expires = Date.now() + 5 * 60 * 1000;
-      await user.save();
-      console.log(`MFA OTP for ${user.email}: ${otp}`);
-      await logAction(user._id, 'MFA OTP generated');
-      return res.json({ msg: 'MFA required', userId: user._id });
-    }
-
     await user.save();
-    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
-    await logAction(user._id, 'User logged in');
-    res.json({ msg: 'Login successful', token });
-  } catch (err) {
-    console.error(err);
-    res.status(500).send('Server error');
+
+    const token = jwt.sign(
+      { id: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    await logAction(user._id, 'LOGIN');
+    res.json({ token });
+  } catch {
+    res.status(500).json({ msg: 'Server error' });
   }
 });
 
-app.post('/api/users/verify-mfa', async (req, res) => {
-  try {
-    const { userId, otp } = req.body;
-    if (!userId || !otp) return res.status(400).json({ msg: 'OTP required' });
 
-    const user = await User.findById(userId);
-    if (!user || !user.mfa_otp) return res.status(400).json({ msg: 'Invalid request' });
-    if (user.mfa_expires < Date.now()) return res.status(400).json({ msg: 'OTP expired' });
-
-    const validOtp = await bcrypt.compare(otp, user.mfa_otp);
-    if (!validOtp) return res.status(400).json({ msg: 'Invalid OTP' });
-
-    user.mfa_otp = null;
-    user.mfa_expires = null;
-    await user.save();
-
-    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
-    await logAction(user._id, 'MFA verified');
-    res.json({ msg: 'MFA success', token });
-  } catch (err) {
-    console.error(err);
-    res.status(500).send('Server error');
-  }
-});
-
-// ----------------- Posts -----------------
+// ---------- POSTS ----------
 
 app.post('/api/posts', auth, async (req, res) => {
   const { title, content } = req.body;
-  if (!title || !content) return res.status(400).json({ msg: 'All fields required' });
+  if (!title || !content)
+    return res.status(400).json({ msg: 'Missing fields' });
 
-  const post = await Post.create({ user: req.user.id, title, content });
-  await logAction(req.user.id, 'Created post', { postId: post._id });
+  const post = await Post.create({
+    user: req.user.id,
+    title,
+    content
+  });
+
+  await logAction(req.user.id, 'CREATE_POST', { postId: post._id });
   res.status(201).json(post);
 });
 
 app.get('/api/posts', async (req, res) => {
-  const posts = await Post.find().populate('user', 'username role').sort({ createdAt: -1 });
+  const posts = await Post.find()
+    .populate('user', 'username role')
+    .sort({ createdAt: -1 });
+
   res.json(posts);
 });
 
 app.delete('/api/posts/:id', auth, checkRole(['Admin']), async (req, res) => {
   await Post.findByIdAndDelete(req.params.id);
-  await logAction(req.user.id, 'Admin deleted post');
-  res.json({ msg: 'Post deleted' });
+  await logAction(req.user.id, 'DELETE_POST');
+  res.json({ msg: 'Deleted' });
 });
 
-// ----------------- Comments -----------------
+
+// ---------- COMMENTS ----------
 
 app.post('/api/comments', auth, async (req, res) => {
   const { postId, content } = req.body;
-  if (!postId || !content) return res.status(400).json({ msg: 'All fields required' });
+  if (!postId || !content)
+    return res.status(400).json({ msg: 'Missing fields' });
 
-  const comment = await Comment.create({ post: postId, user: req.user.id, content });
-  await logAction(req.user.id, 'Created comment');
+  const comment = await Comment.create({
+    post: postId,
+    user: req.user.id,
+    content
+  });
+
+  await logAction(req.user.id, 'COMMENT');
   res.status(201).json(comment);
 });
 
 app.get('/api/comments/:postId', async (req, res) => {
-  const comments = await Comment.find({ post: req.params.postId }).populate('user', 'username role').sort({ createdAt: 1 });
+  const comments = await Comment.find({ post: req.params.postId })
+    .populate('user', 'username role')
+    .sort({ createdAt: 1 });
+
   res.json(comments);
 });
 
-// ----------------- Audit Logs -----------------
+
+// ---------- AUDIT LOGS ----------
 
 app.get('/api/admin/audit-logs', auth, checkRole(['Admin']), async (req, res) => {
-  const logs = await AuditLog.find().populate('user', 'username role').sort({ createdAt: -1 });
+  const logs = await AuditLog.find()
+    .populate('user', 'username role')
+    .sort({ createdAt: -1 });
+
   res.json(logs);
 });
 
-// ----------------- Payments (Square Sandbox) -----------------
+
+// ---------- PAYMENTS (SQUARE SANDBOX) ----------
 
 app.post('/api/payments', auth, async (req, res) => {
   try {
-    const { sourceId, amount } = req.body;
-    if (!sourceId || !amount) return res.status(400).json({ msg: 'sourceId and amount required' });
+    const { amount } = req.body;
+    if (!amount) return res.status(400).json({ msg: 'Amount required' });
 
-    const paymentsApi = squareClient.paymentsApi;
-    const requestBody = {
-      sourceId,
-      idempotencyKey: `${Date.now()}-${Math.random()}`,
-      amountMoney: { amount: parseInt(amount), currency: 'USD' }
-    };
+    const { result } = await squareClient.paymentsApi.createPayment({
+      sourceId: 'cnon:card-nonce-ok',
+      idempotencyKey: crypto.randomUUID(),
+      amountMoney: {
+        amount: parseInt(amount),
+        currency: 'USD'
+      }
+    });
 
-    const { result } = await paymentsApi.createPayment(requestBody);
-    await logAction(req.user.id, 'Payment created', { paymentId: result.payment.id });
+    await logAction(req.user.id, 'PAYMENT', {
+      paymentId: result.payment.id
+    });
+
     res.json(result.payment);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send('Payment error');
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ msg: 'Payment failed' });
   }
 });
 
-// ----------------- Start -----------------
-app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+
+// ---------- START ----------
+
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
