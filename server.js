@@ -3,6 +3,7 @@ const cors = require('cors');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
+const crypto = require('crypto');
 require('dotenv').config();
 
 // DB
@@ -17,9 +18,9 @@ const AuditLog = require('./models/AuditLog');
 // Middleware
 const auth = require('./middleware/auth');
 
-// Square SDK (CORRECT)
-const { SquareClient } = require('square');
-const squareClient = new SquareClient({
+// Square SDK (Sandbox)
+const { Client } = require('square');
+const squareClient = new Client({
   environment: 'sandbox',
   accessToken: process.env.SQUARE_ACCESS_TOKEN
 });
@@ -27,7 +28,7 @@ const squareClient = new SquareClient({
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Global middleware
+// Middleware
 app.use(cors());
 app.use(express.json());
 connectDB();
@@ -39,16 +40,15 @@ const loginLimiter = rateLimit({
 });
 
 // Helpers
-const logAction = async (userId, action, meta = {}) => {
+const logAction = async (userId, action, metadata = {}) => {
   try {
-    await AuditLog.create({ user: userId, action, metadata: meta });
+    await AuditLog.create({ user: userId, action, metadata });
   } catch {}
 };
 
 const checkRole = (roles) => (req, res, next) => {
-  if (!roles.includes(req.user.role)) {
+  if (!roles.includes(req.user.role))
     return res.status(403).json({ msg: 'Forbidden' });
-  }
   next();
 };
 
@@ -60,12 +60,12 @@ app.get('/', (req, res) => {
   res.send('API running');
 });
 
-
 // ---------- USERS ----------
 
 app.post('/api/users/register', async (req, res) => {
   try {
     const { username, email, password } = req.body;
+
     if (!username || !email || !password)
       return res.status(400).json({ msg: 'Missing fields' });
 
@@ -73,14 +73,15 @@ app.post('/api/users/register', async (req, res) => {
       return res.status(400).json({ msg: 'Weak password' });
 
     const exists = await User.findOne({ email });
-    if (exists) return res.status(400).json({ msg: 'Email exists' });
+    if (exists)
+      return res.status(400).json({ msg: 'Email exists' });
 
     const hash = await bcrypt.hash(password, 10);
     const user = await User.create({ username, email, password: hash });
 
     await logAction(user._id, 'REGISTER');
     res.status(201).json({ msg: 'User registered' });
-  } catch (e) {
+  } catch {
     res.status(500).json({ msg: 'Server error' });
   }
 });
@@ -88,11 +89,13 @@ app.post('/api/users/register', async (req, res) => {
 app.post('/api/users/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
+
     if (!email || !password)
       return res.status(400).json({ msg: 'Missing fields' });
 
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ msg: 'Invalid login' });
+    if (!user)
+      return res.status(400).json({ msg: 'Invalid login' });
 
     if (user.lockUntil && user.lockUntil > Date.now())
       return res.status(403).json({ msg: 'Account locked' });
@@ -100,9 +103,8 @@ app.post('/api/users/login', loginLimiter, async (req, res) => {
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) {
       user.failedLoginAttempts += 1;
-      if (user.failedLoginAttempts >= 5) {
+      if (user.failedLoginAttempts >= 5)
         user.lockUntil = Date.now() + 15 * 60 * 1000;
-      }
       await user.save();
       return res.status(400).json({ msg: 'Invalid login' });
     }
@@ -124,11 +126,11 @@ app.post('/api/users/login', loginLimiter, async (req, res) => {
   }
 });
 
-
 // ---------- POSTS ----------
 
 app.post('/api/posts', auth, async (req, res) => {
   const { title, content } = req.body;
+
   if (!title || !content)
     return res.status(400).json({ msg: 'Missing fields' });
 
@@ -156,11 +158,11 @@ app.delete('/api/posts/:id', auth, checkRole(['Admin']), async (req, res) => {
   res.json({ msg: 'Deleted' });
 });
 
-
 // ---------- COMMENTS ----------
 
 app.post('/api/comments', auth, async (req, res) => {
   const { postId, content } = req.body;
+
   if (!postId || !content)
     return res.status(400).json({ msg: 'Missing fields' });
 
@@ -182,7 +184,6 @@ app.get('/api/comments/:postId', async (req, res) => {
   res.json(comments);
 });
 
-
 // ---------- AUDIT LOGS ----------
 
 app.get('/api/admin/audit-logs', auth, checkRole(['Admin']), async (req, res) => {
@@ -193,13 +194,13 @@ app.get('/api/admin/audit-logs', auth, checkRole(['Admin']), async (req, res) =>
   res.json(logs);
 });
 
-
 // ---------- PAYMENTS (SQUARE SANDBOX) ----------
 
 app.post('/api/payments', auth, async (req, res) => {
   try {
     const { amount } = req.body;
-    if (!amount) return res.status(400).json({ msg: 'Amount required' });
+    if (!amount)
+      return res.status(400).json({ msg: 'Amount required' });
 
     const { result } = await squareClient.paymentsApi.createPayment({
       sourceId: 'cnon:card-nonce-ok',
@@ -215,12 +216,11 @@ app.post('/api/payments', auth, async (req, res) => {
     });
 
     res.json(result.payment);
-  } catch (e) {
-    console.error(e);
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ msg: 'Payment failed' });
   }
 });
-
 
 // ---------- START ----------
 
