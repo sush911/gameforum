@@ -256,3 +256,4 @@ app.get('/api/admin/audit-logs', auth, checkRole(['Admin']), async (req, res) =>
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
+
