@@ -46,6 +46,21 @@
   box-shadow: 0 0 5px rgba(102, 126, 234, 0.3);
 }
 
+.form-group textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.form-group textarea:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 5px rgba(102, 126, 234, 0.3);
+}
+
 .form-actions {
   display: flex;
   gap: 10px;
@@ -72,6 +87,11 @@
   background-color: #5568d3;
 }
 
+.btn-primary:disabled {
+  background-color: #999;
+  cursor: not-allowed;
+}
+
 .btn-secondary {
   background-color: #f0f0f0;
   color: #333;
@@ -79,6 +99,20 @@
 
 .btn-secondary:hover {
   background-color: #e0e0e0;
+}
+
+.btn-delete {
+  background-color: #dc3545;
+  color: white;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.btn-delete:hover {
+  background-color: #c82333;
 }
 
 .error {
@@ -137,9 +171,22 @@
 .dashboard-header h1 {
   margin: 0;
   color: #333;
+  font-size: 24px;
 }
 
 .dashboard-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+@media (max-width: 1024px) {
+  .dashboard-content {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dashboard-content > div {
   background: white;
   padding: 20px;
   border-radius: 8px;
@@ -159,3 +206,67 @@
 .btn-logout:hover {
   background-color: #c82333;
 }
+
+.create-post h2 {
+  margin-top: 0;
+  color: #333;
+  font-size: 20px;
+}
+
+.create-post textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+.posts-list h2 {
+  margin-top: 0;
+  color: #333;
+  font-size: 20px;
+}
+
+.posts {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.post-card {
+  background: #f9f9f9;
+  padding: 15px;
+  border-radius: 6px;
+  border-left: 4px solid #667eea;
+}
+
+.post-card h3 {
+  margin: 0 0 8px 0;
+  color: #333;
+  font-size: 18px;
+}
+
+.post-author {
+  margin: 0 0 10px 0;
+  color: #888;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.post-content {
+  margin: 0 0 12px 0;
+  color: #555;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.post-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 10px;
+  border-top: 1px solid #eee;
+}
+
+.post-footer small {
+  color: #999;
+  font-size: 12px;
+}
+

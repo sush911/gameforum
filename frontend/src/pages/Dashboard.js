@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import CreatePost from '../components/CreatePost';
+import PostList from '../components/PostList';
 
 function Dashboard({ handleLogout }) {
   const [user, setUser] = useState(null);
-  const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshPosts, setRefreshPosts] = useState(0);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -32,6 +34,10 @@ function Dashboard({ handleLogout }) {
     navigate('/login');
   };
 
+  const handlePostCreated = () => {
+    setRefreshPosts(refreshPosts + 1);
+  };
+
   if (loading) return <div className="dashboard">Loading...</div>;
 
   return (
@@ -43,7 +49,8 @@ function Dashboard({ handleLogout }) {
         </button>
       </div>
       <div className="dashboard-content">
-        <p>Your gaming forum dashboard</p>
+        <CreatePost onPostCreated={handlePostCreated} />
+        <PostList key={refreshPosts} />
       </div>
     </div>
   );

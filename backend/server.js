@@ -507,15 +507,15 @@ app.post('/api/posts', auth, async (req, res) => {
     const { title, content } = req.body;
 
     if (!title || !content) {
-      return res.status(400).json({ msg: 'Title and content required' });
+      return res.status(400).json({ message: 'title and content required' });
     }
 
     if (title.length < 5 || title.length > 200) {
-      return res.status(400).json({ msg: 'Title must be 5-200 characters' });
+      return res.status(400).json({ message: 'title must be 5-200 characters' });
     }
 
     if (content.length < 10 || content.length > 5000) {
-      return res.status(400).json({ msg: 'Content must be 10-5000 characters' });
+      return res.status(400).json({ message: 'content must be 10-5000 characters' });
     }
 
     const post = await Post.create({
@@ -527,13 +527,12 @@ app.post('/api/posts', auth, async (req, res) => {
 
     await logAction(req.user.id, 'POST_CREATED', { postId: post._id });
 
-    res.status(201).json({
-      msg: 'Post created',
-      post: await post.populate('user', 'username avatar')
-    });
+    res.status(201).json(
+      await post.populate('user', 'username avatar')
+    );
   } catch (err) {
     console.error(err);
-    res.status(500).json({ msg: 'Post creation failed' });
+    res.status(500).json({ message: 'post creation failed' });
   }
 });
 
@@ -545,10 +544,10 @@ app.get('/api/posts', apiLimiter, async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(50);
 
-    res.json({ posts, count: posts.length });
+    res.json(posts);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ msg: 'Failed to fetch posts' });
+    res.status(500).json({ message: 'failed to fetch posts' });
   }
 });
 
@@ -607,20 +606,20 @@ app.delete('/api/posts/:id', auth, async (req, res) => {
     const post = await Post.findById(req.params.id);
 
     if (!post) {
-      return res.status(404).json({ msg: 'Post not found' });
+      return res.status(404).json({ message: 'post not found' });
     }
 
     if (post.user.toString() !== req.user.id && req.user.role !== 'Admin') {
-      return res.status(403).json({ msg: 'Cannot delete this post' });
+      return res.status(403).json({ message: 'cant delete this post' });
     }
 
     await Post.findByIdAndDelete(req.params.id);
     await logAction(req.user.id, 'POST_DELETED', { postId: post._id });
 
-    res.json({ msg: 'Post deleted' });
+    res.json({ message: 'post deleted' });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ msg: 'Post deletion failed' });
+    res.status(500).json({ message: 'post deletion failed' });
   }
 });
 
