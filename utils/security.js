@@ -1,8 +1,11 @@
 const validator = require('validator');
 const crypto = require('crypto');
 
-// Validate email format
-const isValidEmail = (email) => validator.isEmail(email);
+// Check if email is valid format
+const isValidEmail = (email) => {
+  if (!email || typeof email !== 'string') return false;
+  return validator.isEmail(email);
+};
 
 // Validate password strength
 const isStrongPassword = (password) => {
