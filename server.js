@@ -1,3 +1,4 @@
+// server.js
 const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcrypt');
@@ -31,13 +32,13 @@ connectDB();
    RATE LIMITERS
 ======================= */
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 mins
-  max: 10, // 10 requests per window
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
   message: 'Too many login attempts. Try again later.'
 });
 
 /* =======================
-   HELPER FUNCTIONS
+   HELPERS
 ======================= */
 const logAction = async (userId, action, metadata = {}) => {
   try {
@@ -52,9 +53,7 @@ const logAction = async (userId, action, metadata = {}) => {
 };
 
 const checkRole = (roles) => (req, res, next) => {
-  if (!roles.includes(req.user.role)) {
-    return res.status(403).json({ msg: 'Access denied' });
-  }
+  if (!roles.includes(req.user.role)) return res.status(403).json({ msg: 'Access denied' });
   next();
 };
 
@@ -62,16 +61,12 @@ const isStrongPassword = (password) => {
   return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/.test(password);
 };
 
-const generateOTP = () => {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-};
+const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
 
 /* =======================
    TEST ROUTE
 ======================= */
-app.get('/', (req, res) => {
-  res.send('Secure Forum API running');
-});
+app.get('/', (req, res) => res.send('Secure Forum API running'));
 
 /* =======================
    USER ROUTES
@@ -81,23 +76,19 @@ app.get('/', (req, res) => {
 app.post('/api/users/register', async (req, res) => {
   try {
     const { username, email, password } = req.body;
-
-    if (!username || !email || !password)
-      return res.status(400).json({ msg: 'All fields required' });
-
-    if (!isStrongPassword(password))
-      return res.status(400).json({ msg: 'Weak password' });
+    if (!username || !email || !password) return res.status(400).json({ msg: 'All fields required' });
+    if (!isStrongPassword(password)) return res.status(400).json({ msg: 'Weak password' });
 
     const exists = await User.findOne({ email });
-    if (exists)
-      return res.status(400).json({ msg: 'Email already exists' });
+    if (exists) return res.status(400).json({ msg: 'Email already exists' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await User.create({
       username,
       email,
-      password: hashedPassword
+      password: hashedPassword,
+      role: 'User'
     });
 
     await logAction(user._id, 'User registered');
@@ -117,31 +108,25 @@ app.post('/api/users/register', async (req, res) => {
   }
 });
 
-// LOGIN (WITH MFA)
+// LOGIN WITH MFA
 app.post('/api/users/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    if (!email || !password)
-      return res.status(400).json({ msg: 'All fields required' });
+    if (!email || !password) return res.status(400).json({ msg: 'All fields required' });
 
     const user = await User.findOne({ email });
-    if (!user)
-      return res.status(400).json({ msg: 'Invalid credentials' });
+    if (!user) return res.status(400).json({ msg: 'Invalid credentials' });
 
     if (user.lockUntil && user.lockUntil > Date.now())
       return res.status(403).json({ msg: 'Account locked' });
 
     const valid = await bcrypt.compare(password, user.password);
-
     if (!valid) {
       user.failedLoginAttempts += 1;
-
       if (user.failedLoginAttempts >= 5) {
         user.lockUntil = Date.now() + 15 * 60 * 1000;
         await logAction(user._id, 'Account locked');
       }
-
       await user.save();
       return res.status(400).json({ msg: 'Invalid credentials' });
     }
@@ -149,34 +134,22 @@ app.post('/api/users/login', loginLimiter, async (req, res) => {
     user.failedLoginAttempts = 0;
     user.lockUntil = null;
 
-    // MFA FLOW
+    // MFA flow
     if (user.mfa_enabled) {
       const otp = generateOTP();
-
       user.mfa_otp = await bcrypt.hash(otp, 10);
       user.mfa_expires = Date.now() + 5 * 60 * 1000;
       await user.save();
 
       console.log(`🔐 MFA OTP for ${user.email}: ${otp}`);
-
       await logAction(user._id, 'MFA OTP generated');
 
-      return res.json({
-        msg: 'MFA required',
-        userId: user._id
-      });
+      return res.json({ msg: 'MFA required', userId: user._id });
     }
 
     await user.save();
-
-    const token = jwt.sign(
-      { id: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: '1h' }
-    );
-
+    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
     await logAction(user._id, 'User logged in');
-
     res.json({ msg: 'Login successful', token });
   } catch (err) {
     console.error(err);
@@ -188,31 +161,20 @@ app.post('/api/users/login', loginLimiter, async (req, res) => {
 app.post('/api/users/verify-mfa', async (req, res) => {
   try {
     const { userId, otp } = req.body;
-
-    if (!userId || !otp)
-      return res.status(400).json({ msg: 'OTP required' });
+    if (!userId || !otp) return res.status(400).json({ msg: 'OTP required' });
 
     const user = await User.findById(userId);
-    if (!user || !user.mfa_otp)
-      return res.status(400).json({ msg: 'Invalid request' });
-
-    if (user.mfa_expires < Date.now())
-      return res.status(400).json({ msg: 'OTP expired' });
+    if (!user || !user.mfa_otp) return res.status(400).json({ msg: 'Invalid request' });
+    if (user.mfa_expires < Date.now()) return res.status(400).json({ msg: 'OTP expired' });
 
     const validOtp = await bcrypt.compare(otp, user.mfa_otp);
-    if (!validOtp)
-      return res.status(400).json({ msg: 'Invalid OTP' });
+    if (!validOtp) return res.status(400).json({ msg: 'Invalid OTP' });
 
     user.mfa_otp = null;
     user.mfa_expires = null;
     await user.save();
 
-    const token = jwt.sign(
-      { id: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: '1h' }
-    );
-
+    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
     await logAction(user._id, 'MFA verified');
 
     res.json({ msg: 'MFA success', token });
@@ -226,89 +188,105 @@ app.post('/api/users/verify-mfa', async (req, res) => {
 app.post('/api/users/enable-mfa', auth, async (req, res) => {
   req.userDoc.mfa_enabled = true;
   await req.userDoc.save();
-
   await logAction(req.user.id, 'MFA enabled');
-
   res.json({ msg: 'MFA enabled' });
 });
 
 /* =======================
-   POSTS
+   POSTS ROUTES
 ======================= */
+
+// CREATE POST
 app.post('/api/posts', auth, async (req, res) => {
   const { title, content } = req.body;
+  if (!title || !content) return res.status(400).json({ msg: 'All fields required' });
 
-  if (!title || !content)
-    return res.status(400).json({ msg: 'All fields required' });
-
-  const post = await Post.create({
-    user: req.user.id,
-    title,
-    content
-  });
-
+  const post = await Post.create({ user: req.user.id, title, content });
   await logAction(req.user.id, 'Created post', { postId: post._id });
-
   res.status(201).json(post);
 });
 
+// GET approved posts
 app.get('/api/posts', async (req, res) => {
-  const posts = await Post.find()
+  const posts = await Post.find({ approved: true })
     .populate('user', 'username role')
     .sort({ createdAt: -1 });
-
   res.json(posts);
 });
 
+// DELETE POST (ADMIN)
 app.delete('/api/posts/:id', auth, checkRole(['Admin']), async (req, res) => {
   await Post.findByIdAndDelete(req.params.id);
   await logAction(req.user.id, 'Admin deleted post');
-
   res.json({ msg: 'Post deleted' });
 });
 
 /* =======================
-   COMMENTS
+   COMMENTS ROUTES
 ======================= */
+
+// CREATE COMMENT
 app.post('/api/comments', auth, async (req, res) => {
   const { postId, content } = req.body;
+  if (!postId || !content) return res.status(400).json({ msg: 'All fields required' });
 
-  if (!postId || !content)
-    return res.status(400).json({ msg: 'All fields required' });
-
-  const comment = await Comment.create({
-    post: postId,
-    user: req.user.id,
-    content
-  });
-
+  const comment = await Comment.create({ post: postId, user: req.user.id, content });
   await logAction(req.user.id, 'Created comment');
-
   res.status(201).json(comment);
 });
 
+// GET COMMENTS for a post
 app.get('/api/comments/:postId', async (req, res) => {
   const comments = await Comment.find({ post: req.params.postId })
     .populate('user', 'username role')
     .sort({ createdAt: 1 });
-
   res.json(comments);
+});
+
+/* =======================
+   MODERATOR ROUTES
+======================= */
+
+// GET all pending posts
+app.get('/api/moderator/posts/pending', auth, checkRole(['Moderator', 'Admin']), async (req, res) => {
+  const posts = await Post.find({ approved: false })
+    .populate('user', 'username email role')
+    .sort({ createdAt: -1 });
+  res.json(posts);
+});
+
+// APPROVE post
+app.patch('/api/moderator/posts/:id/approve', auth, checkRole(['Moderator', 'Admin']), async (req, res) => {
+  const post = await Post.findById(req.params.id);
+  if (!post) return res.status(404).json({ msg: 'Post not found' });
+
+  post.approved = true;
+  await post.save();
+  await logAction(req.user.id, 'Post approved', { postId: post._id });
+
+  res.json({ msg: 'Post approved', post });
+});
+
+// REJECT post
+app.delete('/api/moderator/posts/:id/reject', auth, checkRole(['Moderator', 'Admin']), async (req, res) => {
+  const post = await Post.findById(req.params.id);
+  if (!post) return res.status(404).json({ msg: 'Post not found' });
+
+  await post.remove();
+  await logAction(req.user.id, 'Post rejected', { postId: post._id });
+
+  res.json({ msg: 'Post rejected' });
 });
 
 /* =======================
    AUDIT LOGS (ADMIN)
 ======================= */
 app.get('/api/admin/audit-logs', auth, checkRole(['Admin']), async (req, res) => {
-  const logs = await AuditLog.find()
-    .populate('user', 'username role')
-    .sort({ createdAt: -1 });
-
+  const logs = await AuditLog.find().populate('user', 'username role').sort({ createdAt: -1 });
   res.json(logs);
 });
 
 /* =======================
    START SERVER
 ======================= */
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));

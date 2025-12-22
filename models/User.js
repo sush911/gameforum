@@ -1,44 +1,21 @@
 const mongoose = require('mongoose');
 
 const UserSchema = new mongoose.Schema({
-  username: {
-    type: String,
-    required: true,
-    minlength: 3
-  },
+  username: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
 
-  email: {
-    type: String,
-    required: true,
-    unique: true,
-    lowercase: true
-  },
+  role: { type: String, enum: ['User', 'Admin'], default: 'User' },
 
-  password: {
-    type: String,
-    required: true
-  },
+  balance: { type: Number, default: 1000 }, // sandbox credits
 
-  role: {
-    type: String,
-    enum: ['User', 'Moderator', 'Admin'],
-    default: 'User'
-  },
-
-  failedLoginAttempts: {
-    type: Number,
-    default: 0
-  },
-
-  lockUntil: Date,
-
-  mfa_enabled: {
-    type: Boolean,
-    default: false
-  },
-
+  mfa_enabled: { type: Boolean, default: false },
   mfa_otp: String,
-  mfa_expires: Date
+  mfa_expires: Date,
+
+  failedLoginAttempts: { type: Number, default: 0 },
+  lockUntil: Date
+
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', UserSchema);
