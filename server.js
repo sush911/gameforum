@@ -236,37 +236,30 @@ app.post('/api/users/mfa/setup', auth, async (req, res) => {
   try {
     const user = req.userDoc;
 
-    // Generate TOTP secret
+    // generate secret for authenticator app
     const secret = speakeasy.generateSecret({
       name: `GameForum (${user.email})`,
       issuer: 'GameForum',
       length: 32
     });
 
-    // Generate QR code
+    // make qr code
     const qrCode = await QRCode.toDataURL(secret.otpauth_url);
 
-    // Generate backup codes
+    // backup codes in case u lose authenticator
     const backupCodes = Array.from({ length: 10 }, () =>
       crypto.randomBytes(4).toString('hex').toUpperCase()
     );
 
-    // Temporarily store secret (not enabled yet)
-    const tempSecret = {
+    res.json({
+      msg: 'mfa ready',
       secret: secret.base32,
       qrCode,
       backupCodes
-    };
-
-    res.json({
-      msg: 'MFA setup initiated',
-      secret: tempSecret.secret,
-      qrCode,
-      backupCodes: tempSecret.backupCodes
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ msg: 'MFA setup failed' });
+    res.status(500).json({ msg: 'mfa setup failed' });
   }
 });
 
