@@ -14,12 +14,15 @@ function Dashboard({ handleLogout }) {
     const fetchUserData = async () => {
       try {
         const token = localStorage.getItem('token');
+        if (!token) {
+          navigate('/login');
+          return;
+        }
         const response = await axios.get('http://localhost:3000/api/auth/me', {
           headers: { Authorization: `Bearer ${token}` },
         });
         setUser(response.data);
       } catch (err) {
-        console.error('Failed to fetch user', err);
         navigate('/login');
       } finally {
         setLoading(false);
