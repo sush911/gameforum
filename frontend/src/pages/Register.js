@@ -98,6 +98,8 @@ function Register() {
             name="username"
             value={formData.username}
             onChange={handleChange}
+            disabled={loading}
+            placeholder="Choose username"
             required
           />
         </div>
@@ -109,6 +111,8 @@ function Register() {
             name="email"
             value={formData.email}
             onChange={handleChange}
+            disabled={loading}
+            placeholder="Enter email"
             required
           />
         </div>
@@ -120,6 +124,21 @@ function Register() {
             name="password"
             value={formData.password}
             onChange={handleChange}
+            disabled={loading}
+            placeholder="Min 6 characters"
+            required
+          />
+        </div>
+        <div className="form-group">
+          <label htmlFor="confirmPassword">Confirm Password</label>
+          <input
+            type="password"
+            id="confirmPassword"
+            name="confirmPassword"
+            value={formData.confirmPassword}
+            onChange={handleChange}
+            disabled={loading}
+            placeholder="Confirm password"
             required
           />
         </div>
