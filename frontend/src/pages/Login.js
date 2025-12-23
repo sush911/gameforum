@@ -9,21 +9,66 @@ function Login({ setToken }) {
   const navigate = useNavigate();
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    if (error) setError('');
+  };
+
+  const validateForm = () => {
+    const username = formData.username.trim();
+    const password = formData.password.trim();
+
+    if (!username || !password) {
+      setError('Please enter both username and password');
+      return false;
+    }
+
+    if (username.length < 3) {
+      setError('Username must be at least 3 characters');
+      return false;
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return false;
+    }
+
+    return true;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (!validateForm()) {
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const response = await axios.post('http://localhost:3000/api/auth/login', formData);
+      const payload = {
+        username: formData.username.trim(),
+        password: formData.password.trim()
+      };
+
+      const response = await axios.post('http://localhost:3000/api/auth/login', payload);
+      
       localStorage.setItem('token', response.data.token);
       setToken(response.data.token);
       navigate('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed');
+      if (err.response?.status === 401) {
+        setError('Invalid username or password');
+      } else if (err.response?.status === 429) {
+        setError('Too many login attempts. Please try again later');
+      } else if (err.response?.data?.message) {
+        setError(err.response.data.message);
+      } else if (!err.response) {
+        setError('Unable to connect to server. Please try again');
+      } else {
+        setError('Login failed. Please try again');
+      }
     } finally {
       setLoading(false);
     }
@@ -32,7 +77,7 @@ function Login({ setToken }) {
   return (
     <div className="container">
       <h1>Game Forum</h1>
-      {error && <div className="error">{error}</div>}
+      {error && <div className="error" role="alert">{error}</div>}
       <form onSubmit={handleSubmit}>
         <div className="form-group">
           <label htmlFor="username">Username</label>
@@ -42,6 +87,9 @@ function Login({ setToken }) {
             name="username"
             value={formData.username}
             onChange={handleChange}
+            disabled={loading}
+            autoComplete="username"
+            placeholder="Enter username"
             required
           />
         </div>
@@ -53,11 +101,18 @@ function Login({ setToken }) {
             name="password"
             value={formData.password}
             onChange={handleChange}
+            disabled={loading}
+            autoComplete="current-password"
+            placeholder="Enter password"
             required
           />
         </div>
         <div className="form-actions">
-          <button type="submit" className="btn btn-primary" disabled={loading}>
+          <button 
+            type="submit" 
+            className="btn btn-primary" 
+            disabled={loading}
+          >
             {loading ? 'Logging in...' : 'Login'}
           </button>
         </div>
