@@ -10,20 +10,32 @@ function CreatePost({ onPostCreated }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (!title.trim() || !content.trim()) {
+      setError('Please fill all fields');
+      return;
+    }
+
     setLoading(true);
 
     try {
       const token = localStorage.getItem('token');
       await axios.post(
         'http://localhost:3000/api/posts',
-        { title, content },
+        { title: title.trim(), content: content.trim() },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setTitle('');
       setContent('');
       onPostCreated();
     } catch (err) {
-      setError(err.response?.data?.message || 'failed to create post');
+      if (err.response?.data?.message) {
+        setError(err.response.data.message);
+      } else if (!err.response) {
+        setError('Connection failed');
+      } else {
+        setError('Could not create post');
+      }
     } finally {
       setLoading(false);
     }
