@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 
 function Register() {
-  const [formData, setFormData] = useState({ username: '', email: '', password: '' });
+  const [formData, setFormData] = useState({ username: '', email: '', password: '', confirmPassword: '' });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
@@ -16,18 +16,69 @@ function Register() {
     if (success) setSuccess('');
   };
 
+  const validateForm = () => {
+    const { username, email, password, confirmPassword } = formData;
+
+    if (!username.trim() || !email.trim() || !password.trim() || !confirmPassword.trim()) {
+      setError('All fields are required');
+      return false;
+    }
+
+    if (username.trim().length < 3) {
+      setError('Username must be at least 3 characters');
+      return false;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setError('Please enter a valid email');
+      return false;
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return false;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return false;
+    }
+
+    return true;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setSuccess('');
+
+    if (!validateForm()) {
+      return;
+    }
+
     setLoading(true);
 
     try {
-      await axios.post('http://localhost:3000/api/auth/register', formData);
-      setSuccess('Registration successful! Redirecting to login...');
+      const payload = {
+        username: formData.username.trim(),
+        email: formData.email.trim(),
+        password: formData.password.trim()
+      };
+
+      await axios.post('http://localhost:3000/api/auth/register', payload);
+      setSuccess('Registration successful! Redirecting...');
       setTimeout(() => navigate('/login'), 2000);
     } catch (err) {
-      setError(err.response?.data?.message || 'Registration failed');
+      if (err.response?.status === 409) {
+        setError('Username or email already exists');
+      } else if (err.response?.data?.message) {
+        setError(err.response.data.message);
+      } else if (!err.response) {
+        setError('Connection error. Please try again');
+      } else {
+        setError('Registration failed');
+      }
     } finally {
       setLoading(false);
     }
