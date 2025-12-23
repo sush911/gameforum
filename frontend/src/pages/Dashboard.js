@@ -41,7 +41,7 @@ function Dashboard({ handleLogout }) {
     setRefreshPosts(refreshPosts + 1);
   };
 
-  if (loading) return <div className="dashboard">Loading...</div>;
+  if (loading) return <div className="dashboard"><div className="loading">Loading...</div></div>;
 
   return (
     <div className="dashboard">
