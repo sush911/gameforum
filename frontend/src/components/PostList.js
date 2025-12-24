@@ -38,8 +38,8 @@ function PostList() {
     }
   };
 
-  if (loading) return <div className="posts-list">loading posts...</div>;
-  if (error) return <div className="error">{error}</div>;
+  if (loading) return <div className="posts-list">loading...</div>;
+  if (error) return <div className="error" role="alert">{error}</div>;
 
   return (
     <div className="posts-list">
