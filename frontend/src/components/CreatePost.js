@@ -65,7 +65,7 @@ function CreatePost({ onPostCreated }) {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             disabled={loading}
-            placeholder="post title"
+            placeholder="whats the title"
             maxLength="200"
             required
           />
