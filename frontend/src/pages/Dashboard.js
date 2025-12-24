@@ -22,10 +22,10 @@ function Dashboard({ handleLogout }) {
           headers: { Authorization: `Bearer ${token}` },
         });
         setUser(response.data);
-      } catch (err) {
-        navigate('/login');
-      } finally {
         setLoading(false);
+      } catch (err) {
+        localStorage.removeItem('token');
+        navigate('/login');
       }
     };
 
