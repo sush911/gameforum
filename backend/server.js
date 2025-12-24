@@ -631,16 +631,16 @@ app.post('/api/comments', auth, async (req, res) => {
     const { postId, content } = req.body;
 
     if (!postId || !content) {
-      return res.status(400).json({ msg: 'Post ID and content required' });
+      return res.status(400).json({ message: 'post id and content required' });
     }
 
     if (content.length < 2 || content.length > 1000) {
-      return res.status(400).json({ msg: 'Comment must be 2-1000 characters' });
+      return res.status(400).json({ message: 'comment must be 2-1000 characters' });
     }
 
     const post = await Post.findById(postId);
     if (!post) {
-      return res.status(404).json({ msg: 'Post not found' });
+      return res.status(404).json({ message: 'post not found' });
     }
 
     const comment = await Comment.create({
@@ -651,13 +651,12 @@ app.post('/api/comments', auth, async (req, res) => {
 
     await logAction(req.user.id, 'COMMENT_CREATED', { postId });
 
-    res.status(201).json({
-      msg: 'Comment created',
-      comment: await comment.populate('user', 'username avatar')
-    });
+    res.status(201).json(
+      await comment.populate('user', 'username avatar')
+    );
   } catch (err) {
     console.error(err);
-    res.status(500).json({ msg: 'Comment creation failed' });
+    res.status(500).json({ message: 'comment creation failed' });
   }
 });
 
@@ -668,10 +667,33 @@ app.get('/api/posts/:postId/comments', apiLimiter, async (req, res) => {
       .populate('user', 'username avatar')
       .sort({ createdAt: -1 });
 
-    res.json({ comments, count: comments.length });
+    res.json(comments);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ msg: 'Failed to fetch comments' });
+    res.status(500).json({ message: 'failed to fetch comments' });
+  }
+});
+
+// Delete comment
+app.delete('/api/comments/:id', auth, async (req, res) => {
+  try {
+    const comment = await Comment.findById(req.params.id);
+
+    if (!comment) {
+      return res.status(404).json({ message: 'comment not found' });
+    }
+
+    if (comment.user.toString() !== req.user.id && req.user.role !== 'Admin') {
+      return res.status(403).json({ message: 'cant delete this comment' });
+    }
+
+    await Comment.findByIdAndDelete(req.params.id);
+    await logAction(req.user.id, 'COMMENT_DELETED', { commentId: comment._id });
+
+    res.json({ message: 'comment deleted' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'comment deletion failed' });
   }
 });
 
