@@ -1,18 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import CommentsList from './CommentsList';
 
 function PostList() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [expandedPost, setExpandedPost] = useState(null);
 
   const fetchPosts = async () => {
     try {
       const response = await axios.get('http://localhost:3000/api/posts');
-      setPosts(response.data);
+      setPosts(response.data || []);
+      setError('');
     } catch (err) {
       setError('failed to load posts');
-      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -49,17 +51,26 @@ function PostList() {
           {posts.map((post) => (
             <div key={post._id} className="post-card">
               <h3>{post.title}</h3>
-              <p className="post-author">by {post.author.username}</p>
+              <p className="post-author">by {post.author?.username || post.user?.username}</p>
               <p className="post-content">{post.content}</p>
               <div className="post-footer">
                 <small>{new Date(post.createdAt).toLocaleDateString()}</small>
-                <button
-                  className="btn-delete"
-                  onClick={() => deletePost(post._id)}
-                >
-                  delete
-                </button>
+                <div className="post-actions">
+                  <button
+                    className="btn-toggle-comments"
+                    onClick={() => setExpandedPost(expandedPost === post._id ? null : post._id)}
+                  >
+                    {expandedPost === post._id ? 'hide' : 'show'} comments
+                  </button>
+                  <button
+                    className="btn-delete"
+                    onClick={() => deletePost(post._id)}
+                  >
+                    delete
+                  </button>
+                </div>
               </div>
+              {expandedPost === post._id && <CommentsList postId={post._id} />}
             </div>
           ))}
         </div>
