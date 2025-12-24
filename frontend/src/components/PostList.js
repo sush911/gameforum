@@ -46,7 +46,7 @@ function PostList() {
     <div className="posts-list">
       <h2>posts</h2>
       {posts.length === 0 ? (
-        <p>no posts yet. be the first to post!</p>
+        <p>no posts yet</p>
       ) : (
         <div className="posts">
           {posts.map((post) => (
