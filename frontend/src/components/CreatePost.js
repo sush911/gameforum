@@ -2,17 +2,28 @@ import React, { useState } from 'react';
 import axios from 'axios';
 
 function CreatePost({ onPostCreated }) {
-  const [content, setContent] = useState('');
   const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const validateForm = () => {
+    if (!title.trim()) {
+      setError('need a title');
+      return false;
+    }
+    if (!content.trim()) {
+      setError('need some content');
+      return false;
+    }
+    return true;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
-    if (!title.trim() || !content.trim()) {
-      setError('Please fill all fields');
+    if (!validateForm()) {
       return;
     }
 
@@ -32,9 +43,9 @@ function CreatePost({ onPostCreated }) {
       if (err.response?.data?.message) {
         setError(err.response.data.message);
       } else if (!err.response) {
-        setError('Connection failed');
+        setError('no connection');
       } else {
-        setError('Could not create post');
+        setError('couldnt post');
       }
     } finally {
       setLoading(false);
@@ -53,7 +64,9 @@ function CreatePost({ onPostCreated }) {
             id="title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
+            disabled={loading}
             placeholder="post title"
+            maxLength="200"
             required
           />
         </div>
@@ -63,8 +76,10 @@ function CreatePost({ onPostCreated }) {
             id="content"
             value={content}
             onChange={(e) => setContent(e.target.value)}
+            disabled={loading}
             placeholder="what's on your mind?"
             rows="6"
+            maxLength="5000"
             required
           />
         </div>
