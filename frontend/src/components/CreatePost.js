@@ -54,7 +54,7 @@ function CreatePost({ onPostCreated }) {
 
   return (
     <div className="create-post">
-      <h2>create a post</h2>
+      <h2>new post</h2>
       {error && <div className="error" role="alert">{error}</div>}
       <form onSubmit={handleSubmit}>
         <div className="form-group">
