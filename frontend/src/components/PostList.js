@@ -25,7 +25,7 @@ function PostList() {
   }, []);
 
   const deletePost = async (postId) => {
-    if (!window.confirm('delete this post?')) return;
+    if (!window.confirm('sure?')) return;
 
     try {
       const token = localStorage.getItem('token');
@@ -33,8 +33,9 @@ function PostList() {
         headers: { Authorization: `Bearer ${token}` }
       });
       setPosts(posts.filter(p => p._id !== postId));
+      setError('');
     } catch (err) {
-      setError('failed to delete post');
+      setError('couldnt delete');
     }
   };
 
@@ -80,3 +81,6 @@ function PostList() {
 }
 
 export default PostList;
+
+
+
