@@ -46,9 +46,9 @@ function Dashboard({ handleLogout }) {
   return (
     <div className="dashboard">
       <div className="dashboard-header">
-        <h1>Welcome, {user?.username}!</h1>
+        <h1>hey {user?.username}!</h1>
         <button className="btn-logout" onClick={logout}>
-          Logout
+          logout
         </button>
       </div>
       <div className="dashboard-content">
