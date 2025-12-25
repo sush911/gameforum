@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import CreatePost from '../components/CreatePost';
 import PostList from '../components/PostList';
@@ -8,6 +8,7 @@ function Dashboard({ handleLogout }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshPosts, setRefreshPosts] = useState(0);
+  const [error, setError] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -18,12 +19,13 @@ function Dashboard({ handleLogout }) {
           navigate('/login');
           return;
         }
-        const response = await axios.get('http://localhost:3000/api/auth/me', {
+        const response = await axios.get('http://localhost:3000/api/users/profile', {
           headers: { Authorization: `Bearer ${token}` },
         });
         setUser(response.data);
         setLoading(false);
       } catch (err) {
+        setError('failed to load user');
         localStorage.removeItem('token');
         navigate('/login');
       }
@@ -41,22 +43,62 @@ function Dashboard({ handleLogout }) {
     setRefreshPosts(refreshPosts + 1);
   };
 
-  if (loading) return <div className="dashboard"><div className="loading">loading...</div></div>;
+  if (loading) {
+    return <div className="dashboard"><div className="loading">loading...</div></div>;
+  }
+
+  if (!user) {
+    return <div className="dashboard"><div className="error">couldn't load ur profile</div></div>;
+  }
 
   return (
     <div className="dashboard">
-      <div className="dashboard-header">
-        <h1>hey {user?.username}!</h1>
-        <button className="btn-logout" onClick={logout}>
-          logout
-        </button>
-      </div>
-      <div className="dashboard-content">
-        <CreatePost onPostCreated={handlePostCreated} />
-        <PostList key={refreshPosts} />
-      </div>
+      <header className="dashboard-header">
+        <div className="header-content">
+          <h1>yo {user.username}! 🎮</h1>
+          <p className="welcome-subtitle">welcome to ur gaming forum</p>
+        </div>
+        <nav className="header-nav">
+          <Link to="/profile" className="nav-link">profile</Link>
+          <button onClick={logout} className="btn-logout">logout</button>
+        </nav>
+      </header>
+
+      {error && <div className="alert alert-error">{error}</div>}
+
+      <main className="dashboard-main">
+        <aside className="sidebar">
+          <div className="user-card">
+            <div className="avatar">
+              {user.avatar ? (
+                <img src={user.avatar} alt={user.username} />
+              ) : (
+                <div className="avatar-default">{user.username[0]?.toUpperCase()}</div>
+              )}
+            </div>
+            <h3>{user.username}</h3>
+            <p className="user-email">{user.email}</p>
+            <p className="user-role">role: {user.role}</p>
+            {user.isPremium && <span className="badge premium">⭐ premium</span>}
+            <Link to="/profile" className="btn btn-secondary">edit profile</Link>
+          </div>
+        </aside>
+
+        <section className="feed">
+          <CreatePost onPostCreated={handlePostCreated} />
+          <PostList key={refreshPosts} />
+        </section>
+      </main>
     </div>
   );
 }
 
 export default Dashboard;
+
+
+
+
+
+
+
+

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
 function UserProfile() {
@@ -6,10 +6,9 @@ function UserProfile() {
   const [editing, setEditing] = useState(false);
   const [formData, setFormData] = useState({});
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
-  React.useEffect(() => {
+  useEffect(() => {
     fetchUserProfile();
   }, []);
 
@@ -26,7 +25,7 @@ function UserProfile() {
         profilePrivate: response.data.profilePrivate || false
       });
     } catch (err) {
-      setError('Failed to load profile');
+      setError('failed to load profile');
     }
   };
 
@@ -42,31 +41,28 @@ function UserProfile() {
     e.preventDefault();
     setLoading(true);
     setError('');
-    setSuccess('');
 
     try {
       const token = localStorage.getItem('token');
       await axios.put('http://localhost:3000/api/users/profile', formData, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setSuccess('Profile updated successfully');
       setEditing(false);
       fetchUserProfile();
     } catch (err) {
-      setError(err.response?.data?.msg || 'Update failed');
+      setError(err.response?.data?.msg || 'update failed');
     } finally {
       setLoading(false);
     }
   };
 
-  if (!user) return <div>Loading...</div>;
+  if (!user) return <div>loading...</div>;
 
   return (
     <div className="profile-container">
-      <h2>User Profile</h2>
+      <h1>ur profile</h1>
 
       {error && <div className="alert alert-error">{error}</div>}
-      {success && <div className="alert alert-success">{success}</div>}
 
       {!editing ? (
         <div className="profile-view">
@@ -79,57 +75,53 @@ function UserProfile() {
               )}
             </div>
             <div className="profile-info">
-              <h3>{user.username}</h3>
-              <p className="email">{user.email}</p>
-              <p className="role">Role: {user.role}</p>
+              <h2>{user.username}</h2>
+              <p>{user.email}</p>
+              <p>role: {user.role}</p>
             </div>
           </div>
 
           <div className="profile-details">
-            <p><strong>Bio:</strong> {user.bio || 'No bio added'}</p>
+            <p><strong>bio:</strong> {user.bio || 'no bio yet'}</p>
             <p>
-              <strong>Privacy:</strong>
-              <span className="privacy-badge">
-                {user.profilePrivate ? '🔒 Private' : '🌐 Public'}
-              </span>
+              <strong>privacy:</strong>
+              {user.profilePrivate ? ' 🔒 private' : ' 🌐 public'}
             </p>
-            <p><strong>Account Created:</strong> {new Date(user.createdAt).toLocaleDateString()}</p>
-            <p><strong>Last Login:</strong> {user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never'}</p>
+            <p><strong>joined:</strong> {new Date(user.createdAt).toLocaleDateString()}</p>
           </div>
 
           <button onClick={() => setEditing(true)} className="btn btn-primary">
-            Edit Profile
+            edit
           </button>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="profile-form">
           <div className="form-group">
-            <label htmlFor="bio">Bio</label>
+            <label htmlFor="bio">bio (what u about)</label>
             <textarea
               id="bio"
               name="bio"
               value={formData.bio}
               onChange={handleChange}
               maxLength="500"
-              placeholder="Tell us about yourself..."
-              aria-label="User biography"
+              placeholder="tell ppl about urself..."
+              rows="4"
             />
             <small>{formData.bio.length}/500</small>
           </div>
 
           <div className="form-group">
-            <label htmlFor="avatar">Avatar URL</label>
+            <label htmlFor="avatar">avatar url</label>
             <input
               type="url"
               id="avatar"
               name="avatar"
               value={formData.avatar}
               onChange={handleChange}
-              placeholder="https://example.com/avatar.jpg"
-              aria-label="Avatar image URL"
+              placeholder="https://example.com/pic.jpg"
             />
             {formData.avatar && (
-              <img src={formData.avatar} alt="Avatar preview" className="avatar-preview" />
+              <img src={formData.avatar} alt="preview" className="avatar-preview" />
             )}
           </div>
 
@@ -140,14 +132,13 @@ function UserProfile() {
               name="profilePrivate"
               checked={formData.profilePrivate}
               onChange={handleChange}
-              aria-label="Make profile private"
             />
-            <label htmlFor="profilePrivate">Make profile private</label>
+            <label htmlFor="profilePrivate">keep it private</label>
           </div>
 
           <div className="form-actions">
             <button type="submit" disabled={loading} className="btn btn-primary">
-              {loading ? 'Saving...' : 'Save Changes'}
+              {loading ? 'saving...' : 'save'}
             </button>
             <button
               type="button"
@@ -157,7 +148,7 @@ function UserProfile() {
               }}
               className="btn btn-secondary"
             >
-              Cancel
+              cancel
             </button>
           </div>
         </form>

@@ -25,7 +25,7 @@ function PostList() {
   }, []);
 
   const deletePost = async (postId) => {
-    if (!window.confirm('sure?')) return;
+    if (!window.confirm('u sure bruh?')) return;
 
     try {
       const token = localStorage.getItem('token');
@@ -35,7 +35,7 @@ function PostList() {
       setPosts(posts.filter(p => p._id !== postId));
       setError('');
     } catch (err) {
-      setError('couldnt delete');
+      setError('couldnt delete that lol');
     }
   };
 
@@ -44,9 +44,9 @@ function PostList() {
 
   return (
     <div className="posts-list">
-      <h2>posts</h2>
+      <h2>🔥 latest posts</h2>
       {posts.length === 0 ? (
-        <p>no posts yet</p>
+        <p className="no-posts">no posts yet, start one!</p>
       ) : (
         <div className="posts">
           {posts.map((post) => (

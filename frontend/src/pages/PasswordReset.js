@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 
 function PasswordReset() {
@@ -9,7 +9,6 @@ function PasswordReset() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -20,10 +19,9 @@ function PasswordReset() {
 
     try {
       await axios.post('http://localhost:3000/api/users/password/reset-request', { email });
-      setSuccess('Check your email for reset code');
       setStep(2);
     } catch (err) {
-      setError(err.response?.data?.msg || 'Request failed');
+      setError(err.response?.data?.msg || 'something went wrong');
     } finally {
       setLoading(false);
     }
@@ -35,7 +33,7 @@ function PasswordReset() {
     setError('');
 
     if (newPassword !== confirmPassword) {
-      setError('Passwords do not match');
+      setError('passwords dont match bro');
       setLoading(false);
       return;
     }
@@ -46,93 +44,93 @@ function PasswordReset() {
         code,
         newPassword
       });
-      setSuccess('Password reset successfully! Redirecting to login...');
-      setTimeout(() => navigate('/login'), 2000);
+      setError('');
+      alert('password reset! go login');
+      navigate('/login');
     } catch (err) {
-      setError(err.response?.data?.msg || 'Reset failed');
+      setError(err.response?.data?.msg || 'reset failed');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="container">
-      <h1>Reset Password</h1>
+    <div className="auth-container">
+      <div className="auth-card">
+        <h1>forgot password? 🤔</h1>
 
-      {error && <div className="alert alert-error">{error}</div>}
-      {success && <div className="alert alert-success">{success}</div>}
+        {error && <div className="alert alert-error">{error}</div>}
 
-      {step === 1 && (
-        <form onSubmit={requestReset}>
-          <p>Enter your email address to receive a password reset code.</p>
-          <div className="form-group">
-            <label htmlFor="email">Email Address</label>
-            <input
-              type="email"
-              id="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="your@email.com"
-              disabled={loading}
-              required
-              aria-label="Email address for password reset"
-            />
-          </div>
-          <button type="submit" disabled={loading} className="btn btn-primary">
-            {loading ? 'Sending...' : 'Send Reset Code'}
-          </button>
-        </form>
-      )}
+        {step === 1 && (
+          <form onSubmit={requestReset}>
+            <p>we'll send u a reset code</p>
+            <div className="form-group">
+              <label htmlFor="email">ur email</label>
+              <input
+                type="email"
+                id="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="your@email.com"
+                disabled={loading}
+                required
+              />
+            </div>
+            <button type="submit" disabled={loading} className="btn btn-primary btn-large">
+              {loading ? 'sending...' : 'send reset code'}
+            </button>
+          </form>
+        )}
 
-      {step === 2 && (
-        <form onSubmit={resetPassword}>
-          <div className="form-group">
-            <label htmlFor="code">Reset Code</label>
-            <input
-              type="text"
-              id="code"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder="Enter code from email"
-              disabled={loading}
-              required
-              aria-label="Password reset code"
-            />
-          </div>
+        {step === 2 && (
+          <form onSubmit={resetPassword}>
+            <div className="form-group">
+              <label htmlFor="code">reset code from email</label>
+              <input
+                type="text"
+                id="code"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="code"
+                disabled={loading}
+                required
+              />
+            </div>
 
-          <div className="form-group">
-            <label htmlFor="newPassword">New Password</label>
-            <input
-              type="password"
-              id="newPassword"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="New password (min 8 chars)"
-              disabled={loading}
-              required
-              aria-label="New password"
-            />
-          </div>
+            <div className="form-group">
+              <label htmlFor="newPassword">new password</label>
+              <input
+                type="password"
+                id="newPassword"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="strong password"
+                disabled={loading}
+                required
+              />
+            </div>
 
-          <div className="form-group">
-            <label htmlFor="confirmPassword">Confirm Password</label>
-            <input
-              type="password"
-              id="confirmPassword"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Confirm new password"
-              disabled={loading}
-              required
-              aria-label="Confirm new password"
-            />
-          </div>
+            <div className="form-group">
+              <label htmlFor="confirmPassword">confirm it</label>
+              <input
+                type="password"
+                id="confirmPassword"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="same password"
+                disabled={loading}
+                required
+              />
+            </div>
 
-          <button type="submit" disabled={loading} className="btn btn-primary">
-            {loading ? 'Resetting...' : 'Reset Password'}
-          </button>
-        </form>
-      )}
+            <button type="submit" disabled={loading} className="btn btn-primary btn-large">
+              {loading ? 'resetting...' : 'set new password'}
+            </button>
+          </form>
+        )}
+
+        <Link to="/login" className="link-secondary">back to login</Link>
+      </div>
     </div>
   );
 }

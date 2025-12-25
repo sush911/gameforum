@@ -7,23 +7,22 @@ function CreatePost({ onPostCreated }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const validateForm = () => {
-    if (!title.trim()) {
-      setError('need a title');
-      return false;
-    }
-    if (!content.trim()) {
-      setError('need some content');
-      return false;
-    }
-    return true;
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
-    if (!validateForm()) {
+    if (!title.trim() || !content.trim()) {
+      setError('need a title and some text bro');
+      return;
+    }
+
+    if (title.length < 5) {
+      setError('title too short (min 5 chars)');
+      return;
+    }
+
+    if (content.length < 10) {
+      setError('write something longer dude');
       return;
     }
 
@@ -33,29 +32,23 @@ function CreatePost({ onPostCreated }) {
       const token = localStorage.getItem('token');
       await axios.post(
         'http://localhost:3000/api/posts',
-        { title: title.trim(), content: content.trim() },
+        { title, content },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setTitle('');
       setContent('');
-      onPostCreated();
+      if (onPostCreated) onPostCreated();
     } catch (err) {
-      if (err.response?.data?.message) {
-        setError(err.response.data.message);
-      } else if (!err.response) {
-        setError('no connection');
-      } else {
-        setError('couldnt post');
-      }
+      setError(err.response?.data?.message || 'post failed lol');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="create-post">
-      <h2>new post</h2>
-      {error && <div className="error" role="alert">{error}</div>}
+    <div className="create-post-card">
+      <h2>post something cool 💬</h2>
+      {error && <div className="alert alert-error">{error}</div>}
       <form onSubmit={handleSubmit}>
         <div className="form-group">
           <label htmlFor="title">title</label>
@@ -64,27 +57,32 @@ function CreatePost({ onPostCreated }) {
             id="title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            disabled={loading}
-            placeholder="whats the title"
+            placeholder="what's on ur mind?"
             maxLength="200"
-            required
+            disabled={loading}
           />
         </div>
+
         <div className="form-group">
-          <label htmlFor="content">content</label>
+          <label htmlFor="content">what u wanna say</label>
           <textarea
             id="content"
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            disabled={loading}
-            placeholder="what's on your mind?"
-            rows="6"
+            placeholder="say whatever..."
             maxLength="5000"
-            required
+            rows="5"
+            disabled={loading}
           />
+          <small>{content.length}/5000</small>
         </div>
-        <button type="submit" className="btn btn-primary" disabled={loading}>
-          {loading ? 'posting...' : 'post'}
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="btn btn-primary"
+        >
+          {loading ? 'posting...' : 'post it'}
         </button>
       </form>
     </div>
