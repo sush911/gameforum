@@ -21,16 +21,28 @@ const UserSchema = new mongoose.Schema(
     passwordExpiresAt: Date,
     lastPasswordChange: Date,
 
+    // Password reset tokens
+    resetToken: String,
+    resetTokenExpires: Date,
+
     // Account settings
     isPremium: { type: Boolean, default: false },
     lastLogin: Date,
+    lastLoginIP: String,
     sessionToken: String,
     sessionExpiresAt: Date,
 
     // Profile data
     bio: String,
     avatar: String,
-    profilePrivate: { type: Boolean, default: false }
+    profilePrivate: { type: Boolean, default: false },
+
+    // Account status
+    isActive: { type: Boolean, default: true },
+    isVerified: { type: Boolean, default: true },
+
+    // Security settings
+    twoFactorRequired: { type: Boolean, default: false }
   },
   { timestamps: true }
 );

@@ -69,12 +69,63 @@ const sanitizeUser = (user) => {
   delete obj.passwordHistory;
   delete obj.sessionToken;
   delete obj.mfa_backup_codes;
+  delete obj.resetToken;
+  delete obj.resetTokenExpires;
   return obj;
 };
 
 // simple check if too many attempts
 const checkRateLimit = (attempts, maxAttempts = 5) => {
   return attempts >= maxAttempts;
+};
+
+// encrypt sensitive data
+const encryptSensitiveData = (data, encryptionKey) => {
+  try {
+    const iv = crypto.randomBytes(16);
+    const key = crypto.createHash('sha256').update(String(encryptionKey)).digest();
+    const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+    let encrypted = cipher.update(JSON.stringify(data), 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    return `${iv.toString('hex')}:${encrypted}`;
+  } catch (err) {
+    console.error('Encryption error:', err.message);
+    return null;
+  }
+};
+
+// decrypt sensitive data
+const decryptSensitiveData = (encryptedData, encryptionKey) => {
+  try {
+    const [ivHex, encrypted] = encryptedData.split(':');
+    const iv = Buffer.from(ivHex, 'hex');
+    const key = crypto.createHash('sha256').update(String(encryptionKey)).digest();
+    const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return JSON.parse(decrypted);
+  } catch (err) {
+    console.error('Decryption error:', err.message);
+    return null;
+  }
+};
+
+// generate password reset token
+const generateResetToken = () => {
+  return crypto.randomBytes(32).toString('hex');
+};
+
+// get reset token expiry (1 hour)
+const getResetTokenExpiry = () => {
+  const date = new Date();
+  date.setHours(date.getHours() + 1);
+  return date;
+};
+
+// validate input to prevent injection attacks
+const sanitizeInput = (input) => {
+  if (typeof input !== 'string') return input;
+  return input.trim().replace(/[<>\"']/g, '');
 };
 
 module.exports = {
@@ -88,5 +139,10 @@ module.exports = {
   generateSessionToken,
   getSessionExpiryTime,
   sanitizeUser,
-  checkRateLimit
+  checkRateLimit,
+  encryptSensitiveData,
+  decryptSensitiveData,
+  generateResetToken,
+  getResetTokenExpiry,
+  sanitizeInput
 };

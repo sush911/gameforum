@@ -7,10 +7,9 @@ const PaymentSchema = new mongoose.Schema(
       ref: 'User',
       required: true
     },
-    squarePaymentId: {
-      type: String,
-      required: true
-    },
+    squarePaymentId: String,
+    stripePaymentId: String,
+    stripeCustomerId: String,
     amount: {
       type: Number,
       required: true
@@ -21,8 +20,18 @@ const PaymentSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      required: true
-    }
+      enum: ['pending', 'completed', 'failed', 'refunded'],
+      default: 'pending'
+    },
+    paymentMethod: {
+      type: String,
+      enum: ['stripe', 'square', 'card'],
+      default: 'stripe'
+    },
+    description: String,
+    metadata: mongoose.Schema.Types.Mixed,
+    completedAt: Date,
+    refundedAt: Date
   },
   { timestamps: true }
 );
