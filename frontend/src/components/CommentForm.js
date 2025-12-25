@@ -9,6 +9,17 @@ function CommentForm({ postId, onCommentAdded }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (!content.trim() || content.trim().length < 2) {
+      setError('comment too short bro');
+      return;
+    }
+
+    if (content.length > 1000) {
+      setError('too long');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -19,9 +30,9 @@ function CommentForm({ postId, onCommentAdded }) {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setContent('');
-      onCommentAdded();
+      if (onCommentAdded) onCommentAdded();
     } catch (err) {
-      setError(err.response?.data?.message || 'failed to post comment');
+      setError(err.response?.data?.message || 'couldnt post comment');
     } finally {
       setLoading(false);
     }
@@ -29,21 +40,23 @@ function CommentForm({ postId, onCommentAdded }) {
 
   return (
     <div className="comment-form">
-      {error && <div className="error">{error}</div>}
+      {error && <div className="alert alert-error">{error}</div>}
       <form onSubmit={handleSubmit}>
-        <div className="form-group">
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder="add a comment..."
-            rows="3"
-            required
-            minLength="2"
-            maxLength="1000"
-          />
-        </div>
-        <button type="submit" className="btn btn-primary" disabled={loading}>
-          {loading ? 'posting...' : 'comment'}
+        <textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          placeholder="reply to this post..."
+          rows="3"
+          maxLength="1000"
+          disabled={loading}
+        />
+        <small>{content.length}/1000</small>
+        <button 
+          type="submit" 
+          className="btn btn-primary" 
+          disabled={loading || !content.trim()}
+        >
+          {loading ? 'posting...' : 'reply'}
         </button>
       </form>
     </div>

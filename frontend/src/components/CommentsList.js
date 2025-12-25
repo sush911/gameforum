@@ -15,8 +15,7 @@ function CommentsList({ postId }) {
       );
       setComments(response.data);
     } catch (err) {
-      setError('failed to load comments');
-      console.error(err);
+      setError('couldnt load comments');
     } finally {
       setLoading(false);
     }
@@ -36,17 +35,17 @@ function CommentsList({ postId }) {
       });
       setComments(comments.filter(c => c._id !== commentId));
     } catch (err) {
-      setError('failed to delete comment');
+      setError('couldnt delete comment');
     }
   };
 
   return (
     <div className="comments-section">
-      <h4>comments</h4>
+      <h4>💬 comments</h4>
       <CommentForm postId={postId} onCommentAdded={() => setRefresh(refresh + 1)} />
-      {loading && <p>loading comments...</p>}
-      {error && <div className="error">{error}</div>}
-      {!loading && comments.length === 0 && <p>no comments yet</p>}
+      {loading && <p>loading...</p>}
+      {error && <div className="alert alert-error">{error}</div>}
+      {!loading && comments.length === 0 && <p>no comments yet, be first!</p>}
       {!loading && comments.length > 0 && (
         <div className="comments">
           {comments.map((comment) => (
