@@ -5,6 +5,7 @@ import Register from './pages/Register';
 import PasswordReset from './pages/PasswordReset';
 import Dashboard from './pages/Dashboard';
 import UserProfile from './pages/UserProfile';
+import AdminPanel from './pages/AdminPanel';
 import './App.css';
 
 function App() {
@@ -25,6 +26,10 @@ function App() {
           <Route
             path="/profile"
             element={token ? <UserProfile /> : <Navigate to="/login" />}
+          />
+          <Route
+            path="/admin"
+            element={token ? <AdminPanel /> : <Navigate to="/login" />}
           />
           <Route
             path="/dashboard"
