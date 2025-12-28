@@ -39,22 +39,28 @@ function CommentForm({ postId, onCommentAdded }) {
   };
 
   return (
-    <div className="comment-form">
-      {error && <div className="alert alert-error">{error}</div>}
-      <form onSubmit={handleSubmit}>
+    <div className="comment-form" role="region" aria-label="Add comment">
+      {error && <div className="alert alert-error" role="alert" aria-live="polite">{error}</div>}
+      <form onSubmit={handleSubmit} aria-label="Comment form">
+        <label htmlFor={`comment-${postId}`} className="sr-only">Your comment</label>
         <textarea
+          id={`comment-${postId}`}
           value={content}
           onChange={(e) => setContent(e.target.value)}
           placeholder="reply to this post..."
           rows="3"
           maxLength="1000"
           disabled={loading}
+          aria-label="Comment text"
+          aria-required="true"
+          aria-describedby={`comment-counter-${postId}`}
         />
-        <small>{content.length}/1000</small>
+        <small id={`comment-counter-${postId}`} aria-live="polite">{content.length}/1000</small>
         <button 
           type="submit" 
           className="btn btn-primary" 
           disabled={loading || !content.trim()}
+          aria-label={loading ? 'Posting comment' : 'Submit comment'}
         >
           {loading ? 'posting...' : 'reply'}
         </button>

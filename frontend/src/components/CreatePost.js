@@ -46,10 +46,10 @@ function CreatePost({ onPostCreated }) {
   };
 
   return (
-    <div className="create-post-card">
-      <h2>post something cool 💬</h2>
-      {error && <div className="alert alert-error">{error}</div>}
-      <form onSubmit={handleSubmit}>
+    <div className="create-post-card" role="region" aria-labelledby="create-post-heading">
+      <h2 id="create-post-heading">post something cool 💬</h2>
+      {error && <div className="alert alert-error" role="alert" aria-live="polite">{error}</div>}
+      <form onSubmit={handleSubmit} aria-label="Create new post">
         <div className="form-group">
           <label htmlFor="title">title</label>
           <input
@@ -60,6 +60,9 @@ function CreatePost({ onPostCreated }) {
             placeholder="what's on ur mind?"
             maxLength="200"
             disabled={loading}
+            aria-label="Post title"
+            aria-required="true"
+            aria-invalid={error && title.length < 5 ? "true" : "false"}
           />
         </div>
 
@@ -73,14 +76,19 @@ function CreatePost({ onPostCreated }) {
             maxLength="5000"
             rows="5"
             disabled={loading}
+            aria-label="Post content"
+            aria-required="true"
+            aria-describedby="content-counter"
+            aria-invalid={error && content.length < 10 ? "true" : "false"}
           />
-          <small>{content.length}/5000</small>
+          <small id="content-counter" aria-live="polite">{content.length}/5000</small>
         </div>
 
         <button
           type="submit"
           disabled={loading}
           className="btn btn-primary"
+          aria-label={loading ? 'Posting your content' : 'Submit post'}
         >
           {loading ? 'posting...' : 'post it'}
         </button>
