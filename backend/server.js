@@ -25,6 +25,7 @@ const checkRole = require('./middleware/role');
 
 // Utils
 const {
+  isValidUsername,
   isValidEmail,
   isStrongPassword,
   checkPasswordReuse,
