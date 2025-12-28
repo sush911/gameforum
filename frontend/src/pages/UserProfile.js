@@ -18,12 +18,27 @@ function UserProfile() {
       const response = await axios.get('http://localhost:3000/api/users/profile', {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setUser(response.data);
-      setFormData({
-        bio: response.data.bio || '',
-        avatar: response.data.avatar || '',
-        profilePrivate: response.data.profilePrivate || false
-      });
+      const userData = response.data.user || response.data;
+      setUser(userData);
+      
+      // Check if this is a new user that just registered
+      const newUserData = localStorage.getItem('newUserData');
+      if (newUserData && !userData.bio) {
+        const storedData = JSON.parse(newUserData);
+        setFormData({
+          bio: storedData.bio || '',
+          avatar: storedData.avatar || '',
+          profilePrivate: storedData.profilePrivate || false
+        });
+        // Clear the new user data flag
+        localStorage.removeItem('newUserData');
+      } else {
+        setFormData({
+          bio: userData.bio || '',
+          avatar: userData.avatar || '',
+          profilePrivate: userData.profilePrivate || false
+        });
+      }
     } catch (err) {
       setError('failed to load profile');
     }
@@ -71,7 +86,7 @@ function UserProfile() {
               {user.avatar ? (
                 <img src={user.avatar} alt={user.username} />
               ) : (
-                <div className="default-avatar">{user.username[0]}</div>
+                <div className="default-avatar">{user.username ? user.username[0].toUpperCase() : '?'}</div>
               )}
             </div>
             <div className="profile-info">
