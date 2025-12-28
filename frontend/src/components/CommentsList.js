@@ -8,20 +8,20 @@ function CommentsList({ postId }) {
   const [error, setError] = useState('');
   const [refresh, setRefresh] = useState(0);
 
-  const fetchComments = async () => {
-    try {
-      const response = await axios.get(
-        `http://localhost:3000/api/posts/${postId}/comments`
-      );
-      setComments(response.data);
-    } catch (err) {
-      setError('couldnt load comments');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
+    const fetchComments = async () => {
+      try {
+        const response = await axios.get(
+          `http://localhost:3000/api/posts/${postId}/comments`
+        );
+        setComments(response.data);
+      } catch (err) {
+        setError('couldnt load comments');
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchComments();
   }, [postId, refresh]);
 

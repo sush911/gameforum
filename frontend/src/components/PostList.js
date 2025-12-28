@@ -39,40 +39,52 @@ function PostList() {
     }
   };
 
-  if (loading) return <div className="posts-list">loading...</div>;
-  if (error) return <div className="error" role="alert">{error}</div>;
+  if (loading) return <div className="posts-list" role="status" aria-live="polite">loading...</div>;
+  if (error) return <div className="error" role="alert" aria-live="assertive">{error}</div>;
 
   return (
-    <div className="posts-list">
-      <h2>🔥 latest posts</h2>
+    <div className="posts-list" role="main" aria-label="Posts feed">
+      <h2 id="posts-heading">🔥 latest posts</h2>
       {posts.length === 0 ? (
-        <p className="no-posts">no posts yet, start one!</p>
+        <p className="no-posts" role="status">no posts yet, start one!</p>
       ) : (
-        <div className="posts">
+        <div className="posts" role="feed" aria-labelledby="posts-heading">
           {posts.map((post) => (
-            <div key={post._id} className="post-card">
-              <h3>{post.title}</h3>
-              <p className="post-author">by {post.author?.username || post.user?.username}</p>
+            <article key={post._id} className="post-card" aria-labelledby={`post-title-${post._id}`}>
+              <h3 id={`post-title-${post._id}`}>{post.title}</h3>
+              <p className="post-author" aria-label={`Posted by ${post.author?.username || post.user?.username}`}>
+                by {post.author?.username || post.user?.username}
+              </p>
               <p className="post-content">{post.content}</p>
               <div className="post-footer">
-                <small>{new Date(post.createdAt).toLocaleDateString()}</small>
-                <div className="post-actions">
+                <time dateTime={post.createdAt} aria-label={`Posted on ${new Date(post.createdAt).toLocaleDateString()}`}>
+                  {new Date(post.createdAt).toLocaleDateString()}
+                </time>
+                <div className="post-actions" role="group" aria-label="Post actions">
                   <button
                     className="btn-toggle-comments"
                     onClick={() => setExpandedPost(expandedPost === post._id ? null : post._id)}
+                    aria-expanded={expandedPost === post._id}
+                    aria-controls={`comments-${post._id}`}
+                    aria-label={expandedPost === post._id ? 'Hide comments' : 'Show comments'}
                   >
                     {expandedPost === post._id ? 'hide' : 'show'} comments
                   </button>
                   <button
                     className="btn-delete"
                     onClick={() => deletePost(post._id)}
+                    aria-label={`Delete post ${post.title}`}
                   >
                     delete
                   </button>
                 </div>
               </div>
-              {expandedPost === post._id && <CommentsList postId={post._id} />}
-            </div>
+              {expandedPost === post._id && (
+                <div id={`comments-${post._id}`} role="region" aria-label="Comments section">
+                  <CommentsList postId={post._id} />
+                </div>
+              )}
+            </article>
           ))}
         </div>
       )}

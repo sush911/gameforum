@@ -79,6 +79,18 @@ function Register() {
       };
 
       const response = await axios.post('http://localhost:3000/api/users/register', payload);
+      
+      // Store user data in localStorage for profile auto-population
+      if (response.data.user) {
+        localStorage.setItem('newUserData', JSON.stringify({
+          username: response.data.user.username,
+          email: response.data.user.email,
+          bio: '',
+          avatar: '',
+          profilePrivate: false
+        }));
+      }
+      
       setSuccess('Registration successful! Redirecting to login...');
       setTimeout(() => navigate('/login'), 2000);
     } catch (err) {

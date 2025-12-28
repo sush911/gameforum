@@ -55,7 +55,7 @@ function Dashboard({ handleLogout }) {
     <div className="dashboard">
       <header className="dashboard-header">
         <div className="header-content">
-          <h1>yo {user.username}! 🎮</h1>
+          <h1>yo {user?.username || 'player'}! 🎮</h1>
           <p className="welcome-subtitle">welcome to ur gaming forum</p>
         </div>
         <nav className="header-nav">
@@ -71,15 +71,15 @@ function Dashboard({ handleLogout }) {
           <div className="user-card">
             <div className="avatar">
               {user.avatar ? (
-                <img src={user.avatar} alt={user.username} />
+                <img src={user.avatar} alt={user.username || 'user'} />
               ) : (
-                <div className="avatar-default">{user.username[0]?.toUpperCase()}</div>
+                <div className="avatar-default">{user?.username?.[0]?.toUpperCase() || 'U'}</div>
               )}
             </div>
-            <h3>{user.username}</h3>
-            <p className="user-email">{user.email}</p>
-            <p className="user-role">role: {user.role}</p>
-            {user.isPremium && <span className="badge premium">⭐ premium</span>}
+            <h3>{user?.username || 'user'}</h3>
+            <p className="user-email">{user?.email || ''}</p>
+            <p className="user-role">role: {user?.role || 'User'}</p>
+            {user?.isPremium && <span className="badge premium">⭐ premium</span>}
             <Link to="/profile" className="btn btn-secondary">edit profile</Link>
           </div>
         </aside>
