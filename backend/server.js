@@ -7,6 +7,7 @@ const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
+const cookieParser = require('cookie-parser');
 require('dotenv').config();
 
 // Database
@@ -22,6 +23,7 @@ const Payment = require('./models/Payment');
 // Middleware
 const auth = require('./middleware/auth');
 const checkRole = require('./middleware/role');
+const { setCSRFToken, csrfProtection } = require('./middleware/csrf');
 const {
   validateRegistration,
   validateLogin,
@@ -57,8 +59,13 @@ const PORT = process.env.PORT || 3000;
 
 // Security middleware
 app.use(helmet()); // Set security headers
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:3001',
+  credentials: true
+}));
+app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
+app.use(setCSRFToken); // Set CSRF token cookie
 connectDB();
 
 // Rate limiters
@@ -96,6 +103,11 @@ const logAction = async (userId, action, metadata = {}) => {
 
 // Health check
 app.get('/', (req, res) => res.json({ msg: 'Gaming Forum API' }));
+
+// Get CSRF token
+app.get('/api/csrf-token', (req, res) => {
+  res.json({ csrfToken: req.cookies.csrfToken });
+});
 
 // ==================== USER AUTHENTICATION ====================
 
