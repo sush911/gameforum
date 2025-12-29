@@ -46,6 +46,7 @@ const {
   getSessionExpiryTime,
   sanitizeUser
 } = require('./utils/security');
+const { sendPasswordResetEmail, sendWelcomeEmail } = require('./utils/email');
 
 // Square payment client
 const { SquareClient } = require('square');
@@ -157,6 +158,11 @@ app.post('/api/users/register', registerLimiter, validateRegistration, async (re
     });
 
     await logAction(user._id, 'REGISTERED', { email });
+
+    // Send welcome email (don't wait for it)
+    sendWelcomeEmail(email, username).catch(err => 
+      console.error('Welcome email failed:', err.message)
+    );
 
     res.status(201).json({
       msg: 'registered',
@@ -460,18 +466,75 @@ app.post('/api/users/password/reset', async (req, res) => {
     user.resetTokenExpires = new Date(Date.now() + 60 * 60 * 1000);
     await user.save();
 
-    // TODO: send email with reset link
-    console.log(`reset token: ${resetToken}`);
+    // Send reset email
+    await sendPasswordResetEmail(email, resetToken, user.username);
 
-    await logAction(user._id, 'PASSWORD_RESET');
+    await logAction(user._id, 'PASSWORD_RESET_REQUESTED');
 
     res.json({
-      msg: 'check email',
-      resetToken
+      msg: 'check email for reset link'
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({ msg: 'reset failed' });
+  }
+});
+
+// Confirm password reset with token
+app.post('/api/users/password/reset-confirm', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({ msg: 'token and new password required' });
+    }
+
+    if (!isStrongPassword(newPassword)) {
+      return res.status(400).json({
+        msg: 'password needs uppercase lowercase number special char, 8+ chars'
+      });
+    }
+
+    // Hash the token to compare
+    const resetTokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    // Find user with valid token
+    const user = await User.findOne({
+      resetToken: resetTokenHash,
+      resetTokenExpires: { $gt: new Date() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ msg: 'invalid or expired token' });
+    }
+
+    // Check not reusing old password
+    const reused = await checkPasswordReuse(user, newPassword, bcrypt);
+    if (reused) {
+      return res.status(400).json({ msg: 'cant reuse old passwords' });
+    }
+
+    // Update password
+    const newHash = await bcrypt.hash(newPassword, 12);
+    if (!user.passwordHistory) user.passwordHistory = [];
+    user.passwordHistory.push({ password: newHash, changedAt: new Date() });
+    if (user.passwordHistory.length > 10) {
+      user.passwordHistory.shift();
+    }
+
+    user.password = newHash;
+    user.lastPasswordChange = new Date();
+    user.passwordExpiresAt = getPasswordExpiryDate();
+    user.resetToken = undefined;
+    user.resetTokenExpires = undefined;
+    await user.save();
+
+    await logAction(user._id, 'PASSWORD_RESET_COMPLETED');
+
+    res.json({ msg: 'password reset successful' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'reset confirmation failed' });
   }
 });
 
