@@ -71,18 +71,18 @@ function UserProfile() {
     }
   };
 
-  if (!user) return <div>loading...</div>;
+  if (!user) return <div role="status" aria-live="polite">loading...</div>;
 
   return (
-    <div className="profile-container">
-      <h1>ur profile</h1>
+    <div className="profile-container" role="main" aria-labelledby="profile-heading">
+      <h1 id="profile-heading">ur profile</h1>
 
-      {error && <div className="alert alert-error">{error}</div>}
+      {error && <div className="alert alert-error" role="alert" aria-live="polite">{error}</div>}
 
       {!editing ? (
         <div className="profile-view">
           <div className="profile-header">
-            <div className="profile-avatar">
+            <div className="profile-avatar" role="img" aria-label={`${user.username} profile picture`}>
               {user.avatar ? (
                 <img src={user.avatar} alt={user.username} />
               ) : (
@@ -96,7 +96,7 @@ function UserProfile() {
             </div>
           </div>
 
-          <div className="profile-details">
+          <div className="profile-details" role="region" aria-label="Profile information">
             <p><strong>bio:</strong> {user.bio || 'no bio yet'}</p>
             <p>
               <strong>privacy:</strong>
@@ -105,12 +105,12 @@ function UserProfile() {
             <p><strong>joined:</strong> {new Date(user.createdAt).toLocaleDateString()}</p>
           </div>
 
-          <button onClick={() => setEditing(true)} className="btn btn-primary">
+          <button onClick={() => setEditing(true)} className="btn btn-primary" aria-label="Edit profile">
             edit
           </button>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="profile-form">
+        <form onSubmit={handleSubmit} className="profile-form" aria-label="Edit profile form">
           <div className="form-group">
             <label htmlFor="bio">bio (what u about)</label>
             <textarea
@@ -121,8 +121,9 @@ function UserProfile() {
               maxLength="500"
               placeholder="tell ppl about urself..."
               rows="4"
+              aria-describedby="bio-counter"
             />
-            <small>{formData.bio.length}/500</small>
+            <small id="bio-counter" aria-live="polite">{formData.bio.length}/500</small>
           </div>
 
           <div className="form-group">
@@ -134,9 +135,10 @@ function UserProfile() {
               value={formData.avatar}
               onChange={handleChange}
               placeholder="https://example.com/pic.jpg"
+              aria-label="Avatar image URL"
             />
             {formData.avatar && (
-              <img src={formData.avatar} alt="preview" className="avatar-preview" />
+              <img src={formData.avatar} alt="preview" className="avatar-preview" aria-label="Avatar preview" />
             )}
           </div>
 
@@ -147,12 +149,13 @@ function UserProfile() {
               name="profilePrivate"
               checked={formData.profilePrivate}
               onChange={handleChange}
+              aria-label="Make profile private"
             />
             <label htmlFor="profilePrivate">keep it private</label>
           </div>
 
-          <div className="form-actions">
-            <button type="submit" disabled={loading} className="btn btn-primary">
+          <div className="form-actions" role="group" aria-label="Form actions">
+            <button type="submit" disabled={loading} className="btn btn-primary" aria-label={loading ? 'Saving changes' : 'Save profile changes'}>
               {loading ? 'saving...' : 'save'}
             </button>
             <button
@@ -162,6 +165,7 @@ function UserProfile() {
                 setError('');
               }}
               className="btn btn-secondary"
+              aria-label="Cancel editing"
             >
               cancel
             </button>

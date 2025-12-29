@@ -1,9 +1,18 @@
 node_modules/
 .env
-README.md
 .env.local
 
-SECURITY.md
+# Build outputs
+frontend/build/
+backend/dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
 
 
 
