@@ -22,6 +22,14 @@ const Payment = require('./models/Payment');
 // Middleware
 const auth = require('./middleware/auth');
 const checkRole = require('./middleware/role');
+const {
+  validateRegistration,
+  validateLogin,
+  validatePost,
+  validateComment,
+  validateProfile,
+  validatePasswordChange
+} = require('./middleware/validate');
 
 // Utils
 const {
@@ -92,7 +100,7 @@ app.get('/', (req, res) => res.json({ msg: 'Gaming Forum API' }));
 // ==================== USER AUTHENTICATION ====================
 
 // Register endpoint
-app.post('/api/users/register', registerLimiter, async (req, res) => {
+app.post('/api/users/register', registerLimiter, validateRegistration, async (req, res) => {
   try {
     const { username, email, password, confirmPassword } = req.body;
 
@@ -149,7 +157,7 @@ app.post('/api/users/register', registerLimiter, async (req, res) => {
 });
 
 // Login endpoint
-app.post('/api/users/login', loginLimiter, async (req, res) => {
+app.post('/api/users/login', loginLimiter, validateLogin, async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -359,7 +367,7 @@ app.post('/api/users/mfa/verify', async (req, res) => {
 // ==================== PASSWORD MANAGEMENT ====================
 
 // Change password
-app.post('/api/users/password/change', auth, async (req, res) => {
+app.post('/api/users/password/change', auth, validatePasswordChange, async (req, res) => {
   try {
     const { currentPassword, newPassword, confirmPassword } = req.body;
     const user = req.userDoc;
@@ -471,7 +479,7 @@ app.get('/api/users/profile', auth, async (req, res) => {
 });
 
 // Update user profile
-app.put('/api/users/profile', auth, async (req, res) => {
+app.put('/api/users/profile', auth, validateProfile, async (req, res) => {
   try {
     const { bio, avatar, profilePrivate } = req.body;
     const user = req.userDoc;
@@ -503,7 +511,7 @@ app.put('/api/users/profile', auth, async (req, res) => {
 // ==================== POSTS ====================
 
 // Create post (authenticated users)
-app.post('/api/posts', auth, async (req, res) => {
+app.post('/api/posts', auth, validatePost, async (req, res) => {
   try {
     const { title, content } = req.body;
 
@@ -627,7 +635,7 @@ app.delete('/api/posts/:id', auth, async (req, res) => {
 // ==================== COMMENTS ====================
 
 // Create comment
-app.post('/api/comments', auth, async (req, res) => {
+app.post('/api/comments', auth, validateComment, async (req, res) => {
   try {
     const { postId, content } = req.body;
 
