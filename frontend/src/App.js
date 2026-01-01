@@ -3,18 +3,15 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import Login from './pages/Login';
 import Register from './pages/Register';
 import PasswordReset from './pages/PasswordReset';
-import Dashboard from './pages/Dashboard';
-import UserProfile from './pages/UserProfile';
-import AdminPanel from './pages/AdminPanel';
+import Home from './pages/Home';
+import EnhancedProfile from './pages/EnhancedProfile';
+import EnhancedAdminPanel from './pages/EnhancedAdminPanel';
+import Donate from './pages/Donate';
 import './App.css';
+import './RetroGamer.css';
 
 function App() {
   const [token, setToken] = useState(() => localStorage.getItem('token'));
-
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    setToken(null);
-  };
 
   return (
     <Router>
@@ -26,17 +23,14 @@ function App() {
           <Route path="/password-reset" element={<PasswordReset />} />
           <Route
             path="/profile"
-            element={token ? <UserProfile /> : <Navigate to="/login" />}
+            element={token ? <EnhancedProfile /> : <Navigate to="/login" />}
           />
           <Route
             path="/admin"
-            element={token ? <AdminPanel /> : <Navigate to="/login" />}
+            element={token ? <EnhancedAdminPanel /> : <Navigate to="/login" />}
           />
-          <Route
-            path="/dashboard"
-            element={token ? <Dashboard handleLogout={handleLogout} /> : <Navigate to="/login" />}
-          />
-          <Route path="/" element={token ? <Navigate to="/dashboard" /> : <Navigate to="/login" />} />
+          <Route path="/donate" element={<Donate />} />
+          <Route path="/" element={<Home />} />
         </Routes>
       </div>
     </Router>

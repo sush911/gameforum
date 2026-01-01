@@ -67,7 +67,7 @@ function Dashboard({ handleLogout }) {
       {error && <div className="alert alert-error" role="alert">{error}</div>}
 
       <main id="main-content" className="dashboard-main" role="main">
-        <aside className="sidebar" role="complementary" aria-label="User information">
+        <aside className="sidebar" aria-label="User information">
           <div className="user-card">
             <div className="avatar" role="img" aria-label={`${user?.username || 'user'} avatar`}>
               {user.avatar ? (
