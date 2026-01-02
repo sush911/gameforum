@@ -902,3 +902,349 @@ app.listen(PORT, () => {
   console.log(` Gaming Forum API running on http://localhost:${PORT}`);
   console.log(`Remember to set JWT_SECRET and SQUARE_ACCESS_TOKEN in .env`);
 });
+
+app.get('/api/posts/:id/comments', async (req, res) => {
+  try {
+    const comments = await Comment.find({ post: req.params.id })
+      .populate('user', 'username avatar role')
+      .populate('replies.user', 'username avatar role')
+      .sort({ createdAt: -1 });
+    res.json(comments);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Failed to fetch comments' });
+  }
+});
+
+// Delete comment
+app.delete('/api/comments/:id', auth, async (req, res) => {
+  try {
+    const comment = await Comment.findById(req.params.id);
+
+    if (!comment) {
+      return res.status(404).json({ message: 'comment not found' });
+    }
+
+    if (comment.user.toString() !== req.user.id && req.user.role !== 'Admin') {
+      return res.status(403).json({ message: 'cant delete this comment' });
+    }
+
+    await Comment.findByIdAndDelete(req.params.id);
+    await logAction(req.user.id, 'COMMENT_DELETED', { commentId: comment._id });
+
+    res.json({ message: 'comment deleted' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'comment deletion failed' });
+  }
+});
+
+// Like comment
+app.post('/api/comments/:id/like', auth, async (req, res) => {
+  try {
+    const comment = await Comment.findById(req.params.id);
+    if (!comment) {
+      return res.status(404).json({ msg: 'Comment not found' });
+    }
+
+    const alreadyLiked = comment.likedBy.includes(req.user.id);
+    
+    if (alreadyLiked) {
+      comment.likes -= 1;
+      comment.likedBy = comment.likedBy.filter(id => id.toString() !== req.user.id);
+    } else {
+      comment.likes += 1;
+      comment.likedBy.push(req.user.id);
+    }
+
+    await comment.save();
+    res.json({ likes: comment.likes, liked: !alreadyLiked });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Failed to like comment' });
+  }
+});
+
+// Reply to comment
+app.post('/api/comments/:id/reply', auth, async (req, res) => {
+  try {
+    const { content } = req.body;
+    const comment = await Comment.findById(req.params.id);
+    
+    if (!comment) {
+      return res.status(404).json({ msg: 'Comment not found' });
+    }
+
+    comment.replies.push({
+      user: req.user.id,
+      content,
+      createdAt: new Date()
+    });
+
+    await comment.save();
+    const populatedComment = await Comment.findById(comment._id)
+      .populate('replies.user', 'username avatar role');
+    
+    res.json(populatedComment);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Failed to reply' });
+  }
+});
+
+// Report comment
+app.post('/api/comments/:id/report', auth, async (req, res) => {
+  try {
+    const { reason } = req.body;
+    const comment = await Comment.findById(req.params.id);
+    
+    if (!comment) {
+      return res.status(404).json({ msg: 'Comment not found' });
+    }
+
+    const alreadyReported = comment.reports.some(r => r.user.toString() === req.user.id);
+    if (alreadyReported) {
+      return res.status(400).json({ msg: 'You already reported this comment' });
+    }
+
+    comment.reports.push({
+      user: req.user.id,
+      reason,
+      createdAt: new Date()
+    });
+
+    await comment.save();
+    await logAction(req.user.id, 'COMMENT_REPORTED', { commentId: comment._id, reason });
+    
+    res.json({ msg: 'Comment reported successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Failed to report comment' });
+  }
+});
+
+// ==================== CATEGORIES ====================
+
+// Get all categories
+app.get('/api/categories', async (req, res) => {
+  try {
+    const categories = await Category.find({ isActive: true }).sort({ order: 1, name: 1 });
+    res.json(categories);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Failed to fetch categories' });
+  }
+});
+
+// Upload category image
+app.post('/api/upload/category-image', auth, checkRole(['Admin', 'Moderator']), uploadImage.single('categoryImage'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ msg: 'No image uploaded' });
+    }
+    
+    const imageUrl = `/uploads/categories/${req.file.filename}`;
+    res.json({ imageUrl });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Image upload failed' });
+  }
+});
+
+// Create category (Admin/Moderator only)
+app.post('/api/categories', auth, checkRole(['Admin', 'Moderator']), async (req, res) => {
+  try {
+    const { name, description, icon, color, image } = req.body;
+    
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    
+    const category = await Category.create({
+      name,
+      slug,
+      description,
+      icon,
+      color,
+      image,
+      createdBy: req.user.id
+    });
+    
+    await logAction(req.user.id, 'CATEGORY_CREATED', { categoryId: category._id, name });
+    
+    res.status(201).json(category);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Category creation failed' });
+  }
+});
+
+// Update category (Admin/Moderator only)
+app.put('/api/categories/:id', auth, checkRole(['Admin', 'Moderator']), async (req, res) => {
+  try {
+    const { name, description, icon, color, isActive, order } = req.body;
+    
+    const category = await Category.findByIdAndUpdate(
+      req.params.id,
+      { name, description, icon, color, isActive, order },
+      { new: true }
+    );
+    
+    if (!category) {
+      return res.status(404).json({ msg: 'Category not found' });
+    }
+    
+    await logAction(req.user.id, 'CATEGORY_UPDATED', { categoryId: category._id });
+    
+    res.json(category);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Category update failed' });
+  }
+});
+
+// Delete category (Admin only)
+app.delete('/api/categories/:id', auth, checkRole(['Admin']), async (req, res) => {
+  try {
+    const category = await Category.findByIdAndDelete(req.params.id);
+    
+    if (!category) {
+      return res.status(404).json({ msg: 'Category not found' });
+    }
+    
+    await logAction(req.user.id, 'CATEGORY_DELETED', { categoryId: category._id, name: category.name });
+    
+    res.json({ msg: 'Category deleted' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Category deletion failed' });
+  }
+});
+
+// ==================== ADMIN ====================
+
+// Get all users (Admin only)
+app.get('/api/admin/users', auth, checkRole(['Admin', 'Moderator']), async (req, res) => {
+  try {
+    const users = await User.find()
+      .select('-password -mfa_secret -mfa_backup_codes -passwordHistory')
+      .sort({ createdAt: -1 });
+    res.json(users);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Failed to fetch users' });
+  }
+});
+
+// Ban user (Admin only)
+app.post('/api/admin/users/:id/ban', auth, checkRole(['Admin', 'Moderator']), async (req, res) => {
+  try {
+    const { reason, duration } = req.body;
+    
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { 
+        isActive: false,
+        banReason: reason,
+        bannedUntil: duration ? new Date(Date.now() + duration * 24 * 60 * 60 * 1000) : null
+      },
+      { new: true }
+    );
+    
+    if (!user) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+    
+    await logAction(req.user.id, 'USER_BANNED', { userId: user._id, reason, duration });
+    
+    res.json({ msg: 'User banned', user });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Ban failed' });
+  }
+});
+
+// Unban user (Admin only)
+app.post('/api/admin/users/:id/unban', auth, checkRole(['Admin', 'Moderator']), async (req, res) => {
+  try {
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { 
+        isActive: true,
+        banReason: null,
+        bannedUntil: null
+      },
+      { new: true }
+    );
+    
+    if (!user) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+    
+    await logAction(req.user.id, 'USER_UNBANNED', { userId: user._id });
+    
+    res.json({ msg: 'User unbanned', user });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Unban failed' });
+  }
+});
+
+// Change user role (Admin only)
+app.post('/api/admin/users/:id/role', auth, checkRole(['Admin']), async (req, res) => {
+  try {
+    const { role } = req.body;
+    
+    if (!['User', 'Moderator', 'Admin'].includes(role)) {
+      return res.status(400).json({ msg: 'Invalid role' });
+    }
+    
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { role },
+      { new: true }
+    );
+    
+    if (!user) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+    
+    await logAction(req.user.id, 'USER_ROLE_CHANGED', { userId: user._id, newRole: role });
+    
+    res.json({ msg: 'Role updated', user });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Role update failed' });
+  }
+});
+
+// Get audit logs (Admin only)
+app.get('/api/admin/audit-logs', auth, checkRole(['Admin', 'Moderator']), async (req, res) => {
+  try {
+    const logs = await AuditLog.find()
+      .populate('user', 'username email')
+      .sort({ timestamp: -1 })
+      .limit(500);
+    res.json({ logs });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Failed to fetch logs' });
+  }
+});
+
+// Get reported posts (Moderator/Admin)
+app.get('/api/moderation/reports', auth, checkRole(['Admin', 'Moderator']), async (req, res) => {
+  try {
+    const posts = await Post.find({ reportCount: { $gt: 0 } })
+      .populate('user', 'username email')
+      .populate('reports.user', 'username')
+      .sort({ reportCount: -1 });
+    res.json(posts);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Failed to fetch reports' });
+  }
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
