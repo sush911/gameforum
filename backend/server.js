@@ -19,11 +19,13 @@ const Post = require('./models/Post');
 const Comment = require('./models/Comment');
 const AuditLog = require('./models/AuditLog');
 const Payment = require('./models/Payment');
+const Category = require('./models/Category');
 
 // Middleware
 const auth = require('./middleware/auth');
 const checkRole = require('./middleware/role');
 const { setCSRFToken, csrfProtection } = require('./middleware/csrf');
+const { uploadImage, uploadVideo, uploadFile } = require('./middleware/upload');
 const {
   validateRegistration,
   validateLogin,
@@ -781,6 +783,90 @@ app.delete('/api/comments/:id', auth, async (req, res) => {
   }
 });
 
+// Like comment
+app.post('/api/comments/:id/like', auth, async (req, res) => {
+  try {
+    const comment = await Comment.findById(req.params.id);
+    if (!comment) {
+      return res.status(404).json({ msg: 'Comment not found' });
+    }
+
+    const alreadyLiked = comment.likedBy.includes(req.user.id);
+    
+    if (alreadyLiked) {
+      comment.likes -= 1;
+      comment.likedBy = comment.likedBy.filter(id => id.toString() !== req.user.id);
+    } else {
+      comment.likes += 1;
+      comment.likedBy.push(req.user.id);
+    }
+
+    await comment.save();
+    res.json({ likes: comment.likes, liked: !alreadyLiked });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Failed to like comment' });
+  }
+});
+
+// Reply to comment
+app.post('/api/comments/:id/reply', auth, async (req, res) => {
+  try {
+    const { content } = req.body;
+    const comment = await Comment.findById(req.params.id);
+    
+    if (!comment) {
+      return res.status(404).json({ msg: 'Comment not found' });
+    }
+
+    comment.replies.push({
+      user: req.user.id,
+      content,
+      createdAt: new Date()
+    });
+
+    await comment.save();
+    const populatedComment = await Comment.findById(comment._id)
+      .populate('replies.user', 'username avatar role');
+    
+    res.json(populatedComment);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Failed to reply' });
+  }
+});
+
+// Report comment
+app.post('/api/comments/:id/report', auth, async (req, res) => {
+  try {
+    const { reason } = req.body;
+    const comment = await Comment.findById(req.params.id);
+    
+    if (!comment) {
+      return res.status(404).json({ msg: 'Comment not found' });
+    }
+
+    const alreadyReported = comment.reports.some(r => r.user.toString() === req.user.id);
+    if (alreadyReported) {
+      return res.status(400).json({ msg: 'You already reported this comment' });
+    }
+
+    comment.reports.push({
+      user: req.user.id,
+      reason,
+      createdAt: new Date()
+    });
+
+    await comment.save();
+    await logAction(req.user.id, 'COMMENT_REPORTED', { commentId: comment._id, reason });
+    
+    res.json({ msg: 'Comment reported successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Failed to report comment' });
+  }
+});
+
 // ==================== PAYMENTS ====================
 
 // Create payment (Square sandbox)
@@ -897,129 +983,159 @@ app.post('/api/admin/users/:id/lock', auth, checkRole(['Admin']), async (req, re
   }
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(` Gaming Forum API running on http://localhost:${PORT}`);
-  console.log(`Remember to set JWT_SECRET and SQUARE_ACCESS_TOKEN in .env`);
-});
+// ==================== UPLOADS ====================
 
-app.get('/api/posts/:id/comments', async (req, res) => {
+// Upload avatar
+app.post('/api/upload/avatar', auth, uploadImage.single('avatar'), async (req, res) => {
   try {
-    const comments = await Comment.find({ post: req.params.id })
-      .populate('user', 'username avatar role')
-      .populate('replies.user', 'username avatar role')
-      .sort({ createdAt: -1 });
-    res.json(comments);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ msg: 'Failed to fetch comments' });
-  }
-});
-
-// Delete comment
-app.delete('/api/comments/:id', auth, async (req, res) => {
-  try {
-    const comment = await Comment.findById(req.params.id);
-
-    if (!comment) {
-      return res.status(404).json({ message: 'comment not found' });
+    if (!req.file) {
+      return res.status(400).json({ msg: 'No file uploaded' });
     }
-
-    if (comment.user.toString() !== req.user.id && req.user.role !== 'Admin') {
-      return res.status(403).json({ message: 'cant delete this comment' });
-    }
-
-    await Comment.findByIdAndDelete(req.params.id);
-    await logAction(req.user.id, 'COMMENT_DELETED', { commentId: comment._id });
-
-    res.json({ message: 'comment deleted' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'comment deletion failed' });
-  }
-});
-
-// Like comment
-app.post('/api/comments/:id/like', auth, async (req, res) => {
-  try {
-    const comment = await Comment.findById(req.params.id);
-    if (!comment) {
-      return res.status(404).json({ msg: 'Comment not found' });
-    }
-
-    const alreadyLiked = comment.likedBy.includes(req.user.id);
     
-    if (alreadyLiked) {
-      comment.likes -= 1;
-      comment.likedBy = comment.likedBy.filter(id => id.toString() !== req.user.id);
-    } else {
-      comment.likes += 1;
-      comment.likedBy.push(req.user.id);
-    }
-
-    await comment.save();
-    res.json({ likes: comment.likes, liked: !alreadyLiked });
+    const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+    
+    // Update user avatar
+    await User.findByIdAndUpdate(req.user.id, { avatar: avatarUrl });
+    
+    res.json({ avatarUrl });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ msg: 'Failed to like comment' });
+    res.status(500).json({ msg: 'Avatar upload failed' });
   }
 });
 
-// Reply to comment
-app.post('/api/comments/:id/reply', auth, async (req, res) => {
+// Upload post images (multiple)
+app.post('/api/upload/post-images', auth, uploadImage.array('postImages', 10), async (req, res) => {
   try {
-    const { content } = req.body;
-    const comment = await Comment.findById(req.params.id);
-    
-    if (!comment) {
-      return res.status(404).json({ msg: 'Comment not found' });
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ msg: 'No images uploaded' });
     }
+    
+    const imageUrls = req.files.map(file => `/uploads/posts/images/${file.filename}`);
+    res.json({ images: imageUrls });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Image upload failed' });
+  }
+});
 
-    comment.replies.push({
+// Upload post video
+app.post('/api/upload/post-video', auth, uploadVideo.single('postVideo'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ msg: 'No video uploaded' });
+    }
+    
+    const videoUrl = `/uploads/posts/videos/${req.file.filename}`;
+    res.json({ videoUrl });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Video upload failed' });
+  }
+});
+
+// Upload post files (mods, etc)
+app.post('/api/upload/post-files', auth, uploadFile.array('postFiles', 5), async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ msg: 'No files uploaded' });
+    }
+    
+    const fileUrls = req.files.map(file => ({
+      url: `/uploads/posts/files/${file.filename}`,
+      name: file.originalname,
+      size: file.size
+    }));
+    
+    res.json({ files: fileUrls });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'File upload failed' });
+  }
+});
+
+// Create post with images/video
+app.post('/api/posts/create', auth, async (req, res) => {
+  try {
+    const { title, content, type, category, images, videoUrl, files, linkUrl, excerpt } = req.body;
+    
+    if (!title || !content) {
+      return res.status(400).json({ msg: 'Title and content required' });
+    }
+    
+    const post = await Post.create({
       user: req.user.id,
+      category,
+      title,
       content,
-      createdAt: new Date()
+      type: type || 'text',
+      images: images || [],
+      videoUrl,
+      files: files || [],
+      linkUrl,
+      excerpt,
+      readTime: Math.ceil(content.split(' ').length / 200) // ~200 words per minute
     });
-
-    await comment.save();
-    const populatedComment = await Comment.findById(comment._id)
-      .populate('replies.user', 'username avatar role');
     
-    res.json(populatedComment);
+    // Update category post count
+    if (category) {
+      await Category.findByIdAndUpdate(category, { $inc: { postCount: 1 } });
+    }
+    
+    await logAction(req.user.id, 'POST_CREATED', { postId: post._id, type });
+    
+    const populatedPost = await Post.findById(post._id)
+      .populate('user', 'username avatar role')
+      .populate('category', 'name slug icon color');
+    
+    res.status(201).json(populatedPost);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ msg: 'Failed to reply' });
+    res.status(500).json({ msg: 'Post creation failed' });
   }
 });
 
-// Report comment
-app.post('/api/comments/:id/report', auth, async (req, res) => {
+// Vote on post
+app.post('/api/posts/:id/vote', auth, async (req, res) => {
   try {
-    const { reason } = req.body;
-    const comment = await Comment.findById(req.params.id);
+    const { vote } = req.body; // 'up' or 'down'
+    const post = await Post.findById(req.params.id);
     
-    if (!comment) {
-      return res.status(404).json({ msg: 'Comment not found' });
+    if (!post) {
+      return res.status(404).json({ msg: 'Post not found' });
     }
-
-    const alreadyReported = comment.reports.some(r => r.user.toString() === req.user.id);
-    if (alreadyReported) {
-      return res.status(400).json({ msg: 'You already reported this comment' });
-    }
-
-    comment.reports.push({
-      user: req.user.id,
-      reason,
-      createdAt: new Date()
-    });
-
-    await comment.save();
-    await logAction(req.user.id, 'COMMENT_REPORTED', { commentId: comment._id, reason });
     
-    res.json({ msg: 'Comment reported successfully' });
+    // Check if user already voted
+    const existingVote = post.votedBy.find(v => v.user.toString() === req.user.id);
+    
+    if (existingVote) {
+      // Remove old vote
+      if (existingVote.vote === 'up') post.upvotes--;
+      if (existingVote.vote === 'down') post.downvotes--;
+      
+      // If same vote, just remove it (toggle off)
+      if (existingVote.vote === vote) {
+        post.votedBy = post.votedBy.filter(v => v.user.toString() !== req.user.id);
+        await post.save();
+        return res.json({ upvotes: post.upvotes, downvotes: post.downvotes, userVote: null });
+      }
+      
+      // Otherwise, change vote
+      existingVote.vote = vote;
+    } else {
+      // New vote
+      post.votedBy.push({ user: req.user.id, vote });
+    }
+    
+    // Add new vote
+    if (vote === 'up') post.upvotes++;
+    if (vote === 'down') post.downvotes++;
+    
+    await post.save();
+    res.json({ upvotes: post.upvotes, downvotes: post.downvotes, userVote: vote });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ msg: 'Failed to report comment' });
+    res.status(500).json({ msg: 'Vote failed' });
   }
 });
 
