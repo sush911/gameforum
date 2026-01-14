@@ -37,13 +37,19 @@ const validateRegistration = [
   validate
 ];
 
-// Login validation rules
+// Login validation rules - allow email or username
 const validateLogin = [
   body('email')
     .trim()
-    .isEmail().withMessage('invalid email')
-    .normalizeEmail()
-    .customSanitizer(value => sanitizeEmail(value)),
+    .notEmpty().withMessage('email or username required')
+    .customSanitizer(value => {
+      // If it looks like an email, sanitize as email
+      if (value.includes('@')) {
+        return sanitizeEmail(value);
+      }
+      // Otherwise treat as username
+      return sanitizeUsername(value);
+    }),
   
   body('password')
     .notEmpty().withMessage('password required'),

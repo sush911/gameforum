@@ -30,7 +30,7 @@ function EnhancedAdminPanel() {
 
       if (activeTab === 'users') {
         const response = await axios.get('http://localhost:3000/api/admin/users', { headers });
-        setUsers(response.data);
+        setUsers(response.data.users || response.data);
       } else if (activeTab === 'categories') {
         const response = await axios.get('http://localhost:3000/api/categories', { headers });
         setCategories(response.data);
@@ -60,30 +60,36 @@ function EnhancedAdminPanel() {
 
     try {
       const token = localStorage.getItem('token');
-      await axios.post(
+      const response = await axios.post(
         `http://localhost:3000/api/admin/users/${userId}/ban`,
         { reason, duration: duration ? parseInt(duration) : null },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      alert('User banned');
-      fetchData();
+      console.log('Ban response:', response.data);
+      alert('User banned successfully');
+      await fetchData();
     } catch (err) {
-      alert('Ban failed');
+      console.error('Ban error:', err);
+      alert('Ban failed: ' + (err.response?.data?.msg || err.message));
     }
   };
 
   const handleUnbanUser = async (userId) => {
+    if (!window.confirm('Are you sure you want to unban this user?')) return;
+    
     try {
       const token = localStorage.getItem('token');
-      await axios.post(
+      const response = await axios.post(
         `http://localhost:3000/api/admin/users/${userId}/unban`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      alert('User unbanned');
-      fetchData();
+      console.log('Unban response:', response.data);
+      alert('User unbanned successfully');
+      await fetchData();
     } catch (err) {
-      alert('Unban failed');
+      console.error('Unban error:', err);
+      alert('Unban failed: ' + (err.response?.data?.msg || err.message));
     }
   };
 
@@ -215,10 +221,10 @@ function EnhancedAdminPanel() {
                             </span>
                           </td>
                           <td style={{ padding: '12px' }}>
-                            {user.isActive ? (
-                              <span style={{ color: '#2d7a4a', fontWeight: 600 }}>✓ Active</span>
+                            {user.isBanned ? (
+                              <span style={{ color: '#d32f2f', fontWeight: 600 }}>🚫 Banned</span>
                             ) : (
-                              <span style={{ color: 'var(--danger)', fontWeight: 600 }}>✗ Banned</span>
+                              <span style={{ color: '#2d7a4a', fontWeight: 600 }}>✓ Active</span>
                             )}
                           </td>
                           <td style={{ padding: '12px', color: 'var(--text-muted)' }}>
@@ -232,21 +238,21 @@ function EnhancedAdminPanel() {
                             >
                               Change Role
                             </button>
-                            {user.isActive ? (
-                              <button
-                                onClick={() => handleBanUser(user._id)}
-                                className="btn btn-danger"
-                                style={{ padding: '6px 12px', fontSize: '12px' }}
-                              >
-                                Ban
-                              </button>
-                            ) : (
+                            {user.isBanned ? (
                               <button
                                 onClick={() => handleUnbanUser(user._id)}
                                 className="btn btn-primary"
                                 style={{ padding: '6px 12px', fontSize: '12px' }}
                               >
                                 Unban
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleBanUser(user._id)}
+                                className="btn btn-danger"
+                                style={{ padding: '6px 12px', fontSize: '12px' }}
+                              >
+                                Ban
                               </button>
                             )}
                           </td>

@@ -11,22 +11,28 @@ const UserSchema = new mongoose.Schema(
     failedLoginAttempts: { type: Number, default: 0 },
     lockUntil: Date,
 
-    // MFA
+    // MFA - Email OTP
     mfa_enabled: { type: Boolean, default: false },
-    mfa_secret: String,
+    mfa_email_otp: String,
+    mfa_email_otp_expires: Date,
+    mfa_secret: String, // For TOTP backup
     mfa_backup_codes: [String],
+
+    // Password reset via Email OTP
+    passwordResetOTP: String,
+    passwordResetOTPExpires: Date,
 
     // Password history & expiry
     passwordHistory: [{ password: String, changedAt: Date }],
     passwordExpiresAt: Date,
     lastPasswordChange: Date,
 
-    // Password reset tokens
-    resetToken: String,
-    resetTokenExpires: Date,
-
     // Account settings
     isPremium: { type: Boolean, default: false },
+    isBanned: { type: Boolean, default: false },
+    banReason: String,
+    bannedAt: Date,
+    bannedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     lastLogin: Date,
     lastLoginIP: String,
     sessionToken: String,
@@ -34,10 +40,10 @@ const UserSchema = new mongoose.Schema(
 
     // Profile data
     bio: String,
-    avatar: String,
+    avatar: String, // Profile picture URL
+    avatarUploadDate: Date,
     profilePrivate: { type: Boolean, default: false },
-
-    // Account status
+    joinDate: { type: Date, default: Date.now },
     isActive: { type: Boolean, default: true },
     isVerified: { type: Boolean, default: true },
 

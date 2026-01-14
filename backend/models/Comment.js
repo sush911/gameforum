@@ -14,6 +14,8 @@ const CommentSchema = new mongoose.Schema({
   likedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   replies: [{
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    authorName: String,
+    avatar: String,
     content: String,
     createdAt: { type: Date, default: Date.now }
   }],

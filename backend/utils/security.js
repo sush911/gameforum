@@ -40,7 +40,9 @@ const isAccountLocked = (user) => {
 
 // check if password expired (90 days)
 const isPasswordExpired = (user) => {
+  // If no expiry date set, password is NOT expired (for backward compatibility)
   if (!user.passwordExpiresAt) return false;
+  // Check if current date is past the expiry date
   return new Date() > new Date(user.passwordExpiresAt);
 };
 

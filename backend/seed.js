@@ -19,15 +19,20 @@ const seedData = async () => {
   try {
     await connectDB();
     
-    // Create your admin account
-    const existingUser = await User.findOne({ email: 'imnumba1@gmail.com' });
+    // Create admin account with requested credentials
+    const existingAdmin = await User.findOne({ 
+      $or: [
+        { email: 'sushantshrestha91133@gmail.com' },
+        { username: 'sushant' }
+      ]
+    });
     
-    if (!existingUser) {
+    if (!existingAdmin) {
       const hashedPassword = await bcrypt.hash('Admin123!', 12);
       
       const admin = await User.create({
-        username: 'MisterOne',
-        email: 'imnumba1@gmail.com',
+        username: 'sushant',
+        email: 'sushantshrestha91133@gmail.com',
         password: hashedPassword,
         role: 'Admin',
         bio: 'Forum Administrator & Gaming Enthusiast',
@@ -37,18 +42,21 @@ const seedData = async () => {
         isVerified: true
       });
       
-      console.log('✅ Admin account created:');
-      console.log('   Email: imnumba1@gmail.com');
-      console.log('   Username: MisterOne');
+      console.log('Admin account created');
+      console.log('Email: sushantshrestha91133@gmail.com');
+      console.log('Username: sushant');
       console.log('   Password: Admin123!');
       console.log('   Role: Admin');
     } else {
       // Update existing user to Admin
-      await User.findByIdAndUpdate(existingUser._id, { 
+      await User.findByIdAndUpdate(existingAdmin._id, { 
         role: 'Admin',
-        username: 'MisterOne'
+        username: 'sushant',
+        email: 'sushantshrestha91133@gmail.com'
       });
-      console.log('✅ Updated existing user to Admin');
+      console.log('Updated existing user to Admin');
+      console.log('Username: sushant');
+      console.log('Email: sushantshrestha91133@gmail.com');
     }
     
     // Create gaming categories
@@ -139,14 +147,14 @@ const seedData = async () => {
       const existing = await Category.findOne({ slug: cat.slug });
       if (!existing) {
         await Category.create(cat);
-        console.log(`✅ Created category: ${cat.name}`);
+        console.log('Created category:', cat.name);
       }
     }
     
-    console.log('\n🎉 Seed data completed successfully!');
-    console.log('\n📝 You can now login with:');
-    console.log('   Email: imnumba1@gmail.com');
-    console.log('   Password: Admin123!');
+    console.log('\nSeed data completed successfully!');
+    console.log('\nYou can now login with:');
+    console.log('Email: imnumba1@gmail.com');
+    console.log('Password: Admin123!');
     
     process.exit(0);
   } catch (err) {

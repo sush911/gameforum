@@ -1,246 +1,519 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
-function Login({ setToken }) {
-  const [step, setStep] = useState('credentials'); // credentials, mfa, or complete
-  const [formData, setFormData] = useState({ email: '', password: '' });
-  const [mfaCode, setMfaCode] = useState('');
+function Login({ setAuth }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [tempUserId, setTempUserId] = useState('');
+  
+  // CAPTCHA states
+  const [captchaValue, setCaptchaValue] = useState('');
+  const [captchaInput, setCaptchaInput] = useState('');
+  const [captchaVerified, setCaptchaVerified] = useState(false);
+  
+  // MFA states
+  const [requireMFA, setRequireMFA] = useState(false);
+  const [tempUserId, setTempUserId] = useState(null);
+  const [mfaCode, setMfaCode] = useState('');
+  
   const navigate = useNavigate();
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-    if (error) setError('');
+  // Generate CAPTCHA on component mount
+  React.useEffect(() => {
+    generateCaptcha();
+  }, []);
+
+  const generateCaptcha = () => {
+    const randomNum = Math.floor(100000 + Math.random() * 900000);
+    setCaptchaValue(randomNum.toString());
+    setCaptchaInput('');
+    setCaptchaVerified(false);
   };
 
-  const validateForm = () => {
-    const email = formData.email.trim();
-    const password = formData.password.trim();
-
-    if (!email || !password) {
-      setError('Please enter both email and password');
+  const verifyCaptcha = () => {
+    if (captchaInput === captchaValue) {
+      setCaptchaVerified(true);
+      setError('');
+      return true;
+    } else {
+      setError('Invalid CAPTCHA. Please try again.');
+      generateCaptcha();
       return false;
     }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      setError('Please enter a valid email address');
-      return false;
-    }
-
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
-      return false;
-    }
-
-    return true;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-
-    if (!validateForm()) {
-      return;
+    
+    // Verify CAPTCHA first
+    if (!captchaVerified) {
+      if (!verifyCaptcha()) {
+        return;
+      }
     }
-
+    
     setLoading(true);
+    console.log('Login attempt for:', email);
 
     try {
-      const payload = {
-        email: formData.email.trim(),
-        password: formData.password.trim()
-      };
+      console.log('Calling /api/users/login...');
+      const response = await axios.post('http://localhost:3000/api/users/login', {
+        email,
+        password
+      });
+      console.log('Login response:', response.data.msg);
 
-      const response = await axios.post('http://localhost:3000/api/users/login', payload);
-
+      // Check if MFA is required
       if (response.data.requireMFA) {
+        console.log('MFA required - showing OTP input');
+        setRequireMFA(true);
         setTempUserId(response.data.tempUserId);
-        setStep('mfa');
-      } else {
-        localStorage.setItem('token', response.data.token);
-        setToken(response.data.token);
-        navigate('/dashboard');
+        setLoading(false);
+        return;
       }
+
+      console.log('Token received:', response.data.token?.substring(0, 20) + '...');
+
+      // Save token
+      localStorage.setItem('token', response.data.token);
+      console.log('Token saved to localStorage');
+      
+      // Update auth state
+      if (setAuth) setAuth(true);
+      window.dispatchEvent(new Event('authChange'));
+      console.log('Auth state updated');
+      
+      // Small delay to ensure state updates before navigation
+      console.log('Waiting 100ms before navigation...');
+      setTimeout(() => {
+        console.log('Navigating to home page...');
+        navigate('/', { replace: true });
+      }, 100);
     } catch (err) {
-      if (err.response?.status === 401) {
-        setError('Invalid email or password');
-      } else if (err.response?.status === 429) {
-        setError('Too many login attempts. Please try again in 15 minutes');
-      } else if (err.response?.data?.msg) {
-        setError(err.response.data.msg);
-      } else if (!err.response) {
-        setError('Unable to connect to server. Please check your connection');
-      } else {
-        setError('Login failed. Please try again');
-      }
-    } finally {
+      console.error('Login error:', err.response?.status, err.response?.data);
+      setError(err.response?.data?.msg || 'Login failed. Please try again.');
       setLoading(false);
     }
   };
 
-  const handleMFAVerify = async (e) => {
+  const handleMFASubmit = async (e) => {
     e.preventDefault();
     setError('');
-
-    if (!mfaCode || mfaCode.length !== 6) {
-      setError('Please enter a 6-digit code');
-      return;
-    }
-
     setLoading(true);
+    console.log('Verifying MFA code...');
 
     try {
-      const response = await axios.post('http://localhost:3000/api/users/mfa/verify', {
+      console.log('Calling /api/users/mfa/verify-email-otp...');
+      const response = await axios.post('http://localhost:3000/api/users/mfa/verify-email-otp', {
         userId: tempUserId,
-        token: mfaCode
+        otp: mfaCode
       });
+      console.log('MFA verified:', response.data.msg);
+      console.log('Token received:', response.data.token?.substring(0, 20) + '...');
 
+      // Save token
       localStorage.setItem('token', response.data.token);
-      setToken(response.data.token);
-      navigate('/dashboard');
+      console.log('Token saved to localStorage');
+      
+      // Update auth state
+      if (setAuth) setAuth(true);
+      window.dispatchEvent(new Event('authChange'));
+      console.log('Auth state updated');
+      
+      // Small delay to ensure state updates before navigation
+      console.log('Waiting 100ms before navigation...');
+      setTimeout(() => {
+        console.log('Navigating to home page...');
+        navigate('/', { replace: true });
+      }, 100);
     } catch (err) {
-      setError(err.response?.data?.msg || 'Invalid MFA code. Please try again');
-    } finally {
+      console.error('MFA verification error:', err.response?.status, err.response?.data);
+      setError(err.response?.data?.msg || 'Invalid OTP code. Please try again.');
       setLoading(false);
     }
   };
 
   return (
-    <div className="auth-container">
-      <div className="auth-card">
-        <h1>Game Forum Login</h1>
-        <p className="subtitle">Welcome back, gamer</p>
+    <div style={styles.container}>
+      <div style={styles.leftSide}>
+        <div style={styles.formContainer}>
+          <div style={styles.logo}>
+            <span style={styles.logoIcon}>🎮</span>
+            <span style={styles.logoText}>GameForum</span>
+          </div>
 
-        {error && <div className="alert alert-error" role="alert">{error}</div>}
+          <h1 style={styles.title}>{requireMFA ? 'Enter OTP Code' : 'Login'}</h1>
 
-        {step === 'credentials' && (
-          <form onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label htmlFor="email">Email Address</label>
+          {error && <div style={styles.error} role="alert" aria-live="polite">{error}</div>}
+
+          {requireMFA ? (
+            // MFA Form
+            <form onSubmit={handleMFASubmit} style={styles.form}>
+              <div style={styles.inputGroup}>
+                <label htmlFor="mfaCode" style={styles.label}>Enter OTP Code</label>
+                <p style={{ fontSize: '14px', color: '#666', marginBottom: '12px' }}>
+                  Check your email ({email}) for the OTP code
+                </p>
+                <input
+                  id="mfaCode"
+                  type="text"
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value)}
+                  placeholder="Enter 6-digit code"
+                  style={styles.input}
+                  aria-label="OTP Code"
+                  aria-required="true"
+                  maxLength="6"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                style={styles.submitButton}
+                aria-label={loading ? 'Verifying' : 'Verify OTP'}
+              >
+                {loading ? 'Verifying...' : 'Verify OTP'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setRequireMFA(false);
+                  setMfaCode('');
+                  setTempUserId(null);
+                  setError('');
+                }}
+                style={{ ...styles.submitButton, background: '#666', marginTop: '12px' }}
+              >
+                Back to Login
+              </button>
+            </form>
+          ) : (
+            // Login Form
+            <form onSubmit={handleSubmit} style={styles.form}>
+            <div style={styles.inputGroup}>
+              <label htmlFor="email" style={styles.label}>Username or email</label>
               <input
-                type="email"
                 id="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                disabled={loading}
-                placeholder="your@email.com"
-                required
-                aria-label="Email address"
-                autoComplete="email"
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="password">Password</label>
-              <input
-                type="password"
-                id="password"
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                disabled={loading}
-                placeholder="Your password"
-                required
-                aria-label="Password"
-                autoComplete="current-password"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="btn btn-primary btn-large"
-              disabled={loading}
-              aria-label="Log in to account"
-            >
-              {loading ? 'Logging in...' : 'Login'}
-            </button>
-          </form>
-        )}
-
-        {step === 'mfa' && (
-          <form onSubmit={handleMFAVerify}>
-            <p className="mfa-description">
-              Two-factor authentication is enabled on your account.
-              Enter the 6-digit code from your authenticator app.
-            </p>
-
-            <div className="form-group">
-              <label htmlFor="mfaCode">Authentication Code</label>
-              <input
                 type="text"
-                id="mfaCode"
-                value={mfaCode}
-                onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                placeholder="000000"
-                maxLength="6"
-                disabled={loading}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email or Username"
+                style={styles.input}
+                aria-label="Email or Username"
+                aria-required="true"
                 required
-                aria-label="MFA code"
-                autoComplete="off"
               />
+            </div>
+
+            {/* CAPTCHA Verification */}
+            <div style={styles.inputGroup}>
+              <label htmlFor="captcha" style={styles.label}>Security Verification</label>
+              <div style={styles.captchaContainer}>
+                <div style={styles.captchaDisplay}>
+                  {captchaValue}
+                </div>
+                <button
+                  type="button"
+                  onClick={generateCaptcha}
+                  style={styles.captchaRefresh}
+                  aria-label="Refresh CAPTCHA"
+                  title="Generate new code"
+                >
+                  🔄
+                </button>
+              </div>
+              <input
+                id="captcha"
+                type="text"
+                value={captchaInput}
+                onChange={(e) => setCaptchaInput(e.target.value)}
+                placeholder="Enter the 6-digit code above"
+                style={styles.input}
+                aria-label="CAPTCHA Code"
+                aria-required="true"
+                maxLength="6"
+                required
+              />
+            </div>
+
+            <div style={styles.inputGroup}>
+              <label htmlFor="password" style={styles.label}>Password</label>
+              <div style={styles.passwordWrapper}>
+                <input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  style={styles.input}
+                  aria-label="Password"
+                  aria-required="true"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={styles.eyeButton}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? '👁️' : '👁️‍🗨️'}
+                </button>
+              </div>
+            </div>
+
+            <div style={styles.rememberRow}>
+              <label style={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  style={styles.checkbox}
+                  aria-label="Remember me"
+                />
+                <span>Remember me</span>
+              </label>
             </div>
 
             <button
               type="submit"
-              className="btn btn-primary btn-large"
-              disabled={loading || mfaCode.length !== 6}
-              aria-label="Verify MFA code"
+              disabled={loading}
+              style={styles.submitButton}
+              aria-label={loading ? 'Logging in' : 'Log in'}
             >
-              {loading ? 'Verifying...' : 'Verify'}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setStep('credentials');
-                setMfaCode('');
-                setError('');
-              }}
-              className="btn btn-secondary"
-            >
-              Back
+              {loading ? 'Logging in...' : 'Log in'}
             </button>
           </form>
-        )}
+          )}
 
-        <div className="divider">
-          <span>New to Game Forum?</span>
+          <div style={styles.footer}>
+            <Link to="/register" style={styles.link}>Sign up</Link>
+            <span style={styles.separator}>•</span>
+            <Link to="/password-reset" style={styles.link}>Forgot password?</Link>
+          </div>
         </div>
+      </div>
 
-        <Link to="/register" className="link-button">
-          Create an Account
-        </Link>
-
-        <Link to="/password-reset" className="link-secondary">
-          Forgot Password?
-        </Link>
-
-        <div className="security-note">
-          <p>🔒 Your login is protected by HTTPS encryption and rate limiting</p>
+      <div style={styles.rightSide}>
+        <div style={styles.imageOverlay}>
+          <h2 style={styles.imageTitle}>Welcome to GameForum</h2>
+          <p style={styles.imageSubtitle}>Connect with gamers worldwide</p>
         </div>
       </div>
     </div>
   );
 }
 
+const styles = {
+  container: {
+    display: 'flex',
+    minHeight: '100vh',
+    background: '#f5f5f5'
+  },
+  leftSide: {
+    flex: '0 0 500px',
+    background: 'rgba(255, 255, 255, 0.98)',
+    backdropFilter: 'blur(10px)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '40px',
+    boxShadow: '2px 0 20px rgba(0,0,0,0.1)',
+    zIndex: 2
+  },
+  formContainer: {
+    width: '100%',
+    maxWidth: '400px'
+  },
+  logo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    marginBottom: '40px'
+  },
+  logoIcon: {
+    fontSize: '36px'
+  },
+  logoText: {
+    fontSize: '28px',
+    fontWeight: 700,
+    color: '#1a1a1a'
+  },
+  title: {
+    fontSize: '32px',
+    fontWeight: 600,
+    marginBottom: '32px',
+    color: '#1a1a1a'
+  },
+  error: {
+    padding: '12px 16px',
+    background: '#fee',
+    border: '1px solid #fcc',
+    borderRadius: '8px',
+    color: '#c00',
+    fontSize: '14px',
+    marginBottom: '20px'
+  },
+  form: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '24px'
+  },
+  inputGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px'
+  },
+  label: {
+    fontSize: '14px',
+    fontWeight: 600,
+    color: '#333'
+  },
+  input: {
+    width: '100%',
+    padding: '14px 16px',
+    fontSize: '15px',
+    border: '2px solid #e0e0e0',
+    borderRadius: '8px',
+    outline: 'none',
+    transition: 'border-color 0.2s',
+    background: 'white',
+    boxSizing: 'border-box',
+    fontFamily: 'inherit'
+  },
+  passwordWrapper: {
+    position: 'relative',
+    width: '100%'
+  },
+  eyeButton: {
+    position: 'absolute',
+    right: '12px',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    fontSize: '18px',
+    padding: '4px'
+  },
+  rememberRow: {
+    display: 'flex',
+    alignItems: 'center'
+  },
+  checkboxLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    fontSize: '14px',
+    color: '#666',
+    cursor: 'pointer'
+  },
+  checkbox: {
+    width: '18px',
+    height: '18px',
+    cursor: 'pointer'
+  },
+  captchaContainer: {
+    display: 'flex',
+    gap: '12px',
+    alignItems: 'center',
+    marginBottom: '12px'
+  },
+  captchaDisplay: {
+    flex: 1,
+    padding: '16px',
+    fontSize: '24px',
+    fontWeight: 'bold',
+    letterSpacing: '8px',
+    textAlign: 'center',
+    background: 'linear-gradient(135deg, #0079D3 0%, #0056A3 100%)',
+    color: 'white',
+    borderRadius: '8px',
+    userSelect: 'none',
+    fontFamily: 'monospace'
+  },
+  captchaRefresh: {
+    padding: '12px 16px',
+    fontSize: '20px',
+    background: '#f0f0f0',
+    border: '2px solid #e0e0e0',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  submitButton: {
+    width: '100%',
+    padding: '16px',
+    fontSize: '16px',
+    fontWeight: 700,
+    color: 'white',
+    background: 'linear-gradient(135deg, #0079D3 0%, #0056A3 100%)',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    transition: 'transform 0.2s, opacity 0.2s',
+    marginTop: '8px',
+    boxSizing: 'border-box',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    textAlign: 'center'
+  },
+  footer: {
+    marginTop: '24px',
+    textAlign: 'center',
+    fontSize: '14px',
+    color: '#666'
+  },
+  link: {
+    color: '#0079D3',
+    textDecoration: 'none',
+    fontWeight: 600
+  },
+  separator: {
+    margin: '0 12px',
+    color: '#ccc'
+  },
+  rightSide: {
+    flex: 1,
+    background: 'linear-gradient(135deg, #0079D3 0%, #0056A3 100%)',
+    backgroundImage: 'url("https://images.unsplash.com/photo-1538481199705-c710c4e965fc?w=1200"), linear-gradient(135deg, rgba(0, 121, 211, 0.8) 0%, rgba(0, 86, 163, 0.8) 100%)',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundBlendMode: 'overlay',
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  imageOverlay: {
+    textAlign: 'center',
+    color: 'white',
+    padding: '40px',
+    zIndex: 1
+  },
+  imageTitle: {
+    fontSize: '48px',
+    fontWeight: 700,
+    marginBottom: '16px',
+    textShadow: '2px 2px 4px rgba(0,0,0,0.3)'
+  },
+  imageSubtitle: {
+    fontSize: '20px',
+    opacity: 0.9,
+    textShadow: '1px 1px 2px rgba(0,0,0,0.3)'
+  }
+};
+
 export default Login;
-
-
-
-
-
-
-
-
-
-
-
-
-
-

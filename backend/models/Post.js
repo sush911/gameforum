@@ -6,7 +6,7 @@ const PostSchema = new mongoose.Schema(
     category: { type: mongoose.Schema.Types.ObjectId, ref: 'Category' },
     title: { type: String, required: true },
     content: { type: String, required: true },
-    type: { type: String, enum: ['text', 'image', 'video', 'link', 'file'], default: 'text' },
+    type: { type: String, enum: ['text', 'image', 'video', 'link', 'file', 'poll', 'blog'], default: 'text' },
     
     // Media fields
     images: [String], // Array of image URLs
@@ -22,7 +22,16 @@ const PostSchema = new mongoose.Schema(
       size: Number
     }],
     
-    // Article fields
+    // Poll fields
+    pollOptions: [{
+      text: String,
+      votes: { type: Number, default: 0 },
+      votedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
+    }],
+    pollEndsAt: Date,
+    pollAllowMultiple: { type: Boolean, default: false },
+    
+    // Article/Blog fields
     excerpt: String,
     readTime: Number, // in minutes
     
@@ -30,6 +39,7 @@ const PostSchema = new mongoose.Schema(
     viewCount: { type: Number, default: 0 },
     upvotes: { type: Number, default: 0 },
     downvotes: { type: Number, default: 0 },
+    likedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     votedBy: [{
       user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
       vote: { type: String, enum: ['up', 'down'] }
@@ -38,15 +48,7 @@ const PostSchema = new mongoose.Schema(
     // Status
     published: { type: Boolean, default: true },
     isPinned: { type: Boolean, default: false },
-    isLocked: { type: Boolean, default: false },
-    
-    // Moderation
-    reportCount: { type: Number, default: 0 },
-    reports: [{
-      user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-      reason: String,
-      createdAt: { type: Date, default: Date.now }
-    }]
+    isLocked: { type: Boolean, default: false }
   },
   { timestamps: true }
 );
