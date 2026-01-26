@@ -10,7 +10,6 @@ import EnhancedProfile from './pages/EnhancedProfile';
 import PublicUserProfile from './pages/PublicUserProfile';
 import CommunityPage from './pages/CommunityPage';
 import PostDetail from './pages/PostDetail';
-import Notifications from './pages/Notifications';
 import AdminPanel from './pages/AdminPanel';
 import CommunityManagement from './pages/CommunityManagement';
 import Donate from './pages/Donate';
@@ -54,7 +53,6 @@ function AppRoutes() {
       <Route path="/user/:identifier" element={<PublicUserProfile />} />
       <Route path="/community/:slug" element={<CommunityPage />} />
       <Route path="/post/:id" element={<PostDetail />} />
-      <Route path="/notifications" element={isAuthenticated ? <Notifications /> : <Navigate to="/login" replace />} />
       <Route path="/settings" element={isAuthenticated ? <Settings /> : <Navigate to="/login" replace />} />
       <Route path="/donate" element={isAuthenticated ? <Donate /> : <Navigate to="/login" replace />} />
       <Route path="/donate/success" element={isAuthenticated ? <DonateSuccess /> : <Navigate to="/login" replace />} />

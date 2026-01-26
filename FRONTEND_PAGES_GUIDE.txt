@@ -1,0 +1,284 @@
+================================================================================
+                    FRONTEND PAGES GUIDE - WHAT EACH PAGE DOES
+================================================================================
+
+Your GameForum application has 18 frontend pages. Here's what each one does:
+
+================================================================================
+                    MAIN PAGES (User-Facing)
+================================================================================
+
+1. NewHome.js ⭐ (CURRENTLY USED)
+   URL: / (root/homepage)
+   PURPOSE: Main homepage with posts feed
+   FEATURES:
+   - Shows all posts from all communities
+   - Filter by category/community
+   - Sort by new/trending/top
+   - Create new post button
+   - Search posts
+   - Modern UI with animations (Framer Motion)
+   STATUS: ✅ ACTIVE (used in App.js routes)
+
+2. Home.js ❌ (OLD VERSION - NOT USED)
+   URL: None (not in routes)
+   PURPOSE: Old homepage (replaced by NewHome.js)
+   STATUS: ⚠️ DEPRECATED - Can be deleted
+   NOTE: NewHome.js is the improved version with better UI
+
+3. Login.js
+   URL: /login
+   PURPOSE: User login page
+   FEATURES:
+   - Email/password login
+   - Custom CAPTCHA verification
+   - MFA (OTP) support
+   - Remember me checkbox
+   - Show/hide password
+   - Link to register and password reset
+   SCREENSHOT: Figure 19 in documentation
+
+4. Register.js
+   URL: /register
+   PURPOSE: User registration page
+   FEATURES:
+   - Username, email, password fields
+   - Password strength meter
+   - Confirm password validation
+   - Show/hide password
+   - Link to login
+   SCREENSHOT: Figure 20 in documentation
+
+5. PasswordReset.js
+   URL: /password-reset
+   PURPOSE: Reset forgotten password
+   FEATURES:
+   - Request reset link via email
+   - Enter new password with token
+   - Password strength validation
+
+
+================================================================================
+                    PROFILE & USER PAGES
+================================================================================
+
+6. UserProfile.js
+   URL: /profile
+   PURPOSE: Current user's own profile page
+   FEATURES:
+   - View/edit profile information
+   - Upload avatar image
+   - Enable/disable MFA
+   - View own posts
+   - Edit bio
+   - Account settings
+
+7. EnhancedProfile.js
+   URL: /enhanced-profile (if used)
+   PURPOSE: Alternative profile page with enhanced UI
+   FEATURES:
+   - Similar to UserProfile.js
+   - Different design/layout
+   - Upload avatar
+   - Edit bio
+   NOTE: May be an alternative version - check App.js routes
+
+8. PublicUserProfile.js
+   URL: /user/:username
+   PURPOSE: View other users' public profiles
+   FEATURES:
+   - View user's public information
+   - See their posts
+   - View avatar and bio
+   - Cannot edit (read-only)
+
+9. Settings.js
+   URL: /settings
+   PURPOSE: User account settings
+   FEATURES:
+   - Enable/disable MFA
+   - Dark mode toggle
+   - Account preferences
+   - Security settings
+
+================================================================================
+                    POST & CONTENT PAGES
+================================================================================
+
+10. PostDetail.js
+    URL: /post/:id
+    PURPOSE: View individual post with comments
+    FEATURES:
+    - Full post content
+    - Like/unlike post
+    - Add comments
+    - View all comments
+    - Edit/delete own post
+    - Share post
+
+11. CommunityPage.js
+    URL: /community/:slug
+    PURPOSE: View posts from specific community/category
+    FEATURES:
+    - Filter posts by community
+    - Community information
+    - Join/leave community
+    - Community stats
+
+12. CommunityManagement.js
+    URL: /communities or /community
+    PURPOSE: Browse and manage communities
+    FEATURES:
+    - View all communities
+    - Create new community
+    - Join/leave communities
+    - Community grid view
+    - Gaming-themed categories
+
+================================================================================
+                    ADMIN PAGES
+================================================================================
+
+13. EnhancedAdminPanel.js ⭐ (MAIN ADMIN PAGE)
+    URL: /admin
+    PURPOSE: Main admin dashboard
+    FEATURES:
+    - User management (ban/unban users)
+    - Category management
+    - View reports
+    - Audit logs
+    - Statistics
+    TABS:
+    - Users tab (manage users)
+    - Categories tab (manage communities)
+    - Reports tab (user reports)
+    - Audit Logs tab (security events)
+    SCREENSHOT: Figure 21, 22, 25 in documentation
+    STATUS: ✅ ACTIVE (primary admin interface)
+
+14. AdminPanel.js
+    URL: /admin-old (if used)
+    PURPOSE: Alternative admin dashboard
+    FEATURES:
+    - Similar to EnhancedAdminPanel.js
+    - Different UI design
+    - User management
+    - Post management
+    - Donation tracking
+    - Audit logs
+    NOTE: May be older version - check which is used in routes
+
+15. AdminReports.js
+    URL: /admin/reports
+    PURPOSE: View and manage user reports
+    FEATURES:
+    - View reported content
+    - Take action on reports
+    - Mark as resolved
+    - Ban users from reports
+
+================================================================================
+                    PAYMENT PAGES
+================================================================================
+
+16. Donate.js
+    URL: /donate/:username
+    PURPOSE: Donate to content creators
+    FEATURES:
+    - Square payment integration
+    - Enter donation amount
+    - Process payment
+    - Support creators
+
+17. DonateSuccess.js
+    URL: /donate/success
+    PURPOSE: Payment confirmation page
+    FEATURES:
+    - Show successful donation
+    - Thank you message
+    - Return to homepage
+
+================================================================================
+                    NOTIFICATION PAGE
+================================================================================
+
+18. Notifications.js
+    URL: /notifications
+    PURPOSE: View user notifications
+    FEATURES:
+    - New comments on posts
+    - Likes on posts
+    - Mentions
+    - System notifications
+    - Mark as read
+
+================================================================================
+                    SUMMARY - WHICH PAGES ARE USED?
+================================================================================
+
+ACTIVE PAGES (Currently in use):
+✅ NewHome.js - Main homepage
+✅ Login.js - Login page
+✅ Register.js - Registration
+✅ PasswordReset.js - Password reset
+✅ UserProfile.js or EnhancedProfile.js - User profile
+✅ PublicUserProfile.js - View other users
+✅ Settings.js - Account settings
+✅ PostDetail.js - View post
+✅ CommunityPage.js - Community view
+✅ CommunityManagement.js - Browse communities
+✅ EnhancedAdminPanel.js - Admin dashboard
+✅ AdminReports.js - Admin reports
+✅ Donate.js - Donations
+✅ DonateSuccess.js - Payment success
+✅ Notifications.js - Notifications
+
+DEPRECATED/UNUSED PAGES (Can be deleted):
+❌ Home.js - Replaced by NewHome.js
+⚠️ AdminPanel.js - May be replaced by EnhancedAdminPanel.js
+
+================================================================================
+                    ANSWER TO YOUR QUESTION
+================================================================================
+
+Q: "We have Home.js and NewHome.js what is that pages?"
+
+A: 
+- Home.js = OLD homepage (not used anymore)
+- NewHome.js = NEW homepage (currently active)
+
+NewHome.js is the improved version with:
+- Better UI design
+- Framer Motion animations
+- Better performance
+- More features
+
+You can SAFELY DELETE Home.js - it's not being used!
+
+================================================================================
+                    HOW TO CHECK WHICH IS USED
+================================================================================
+
+Look at frontend/src/App.js:
+- Line 8: import NewHome from './pages/NewHome';
+- Line 64: <Route path="/" element={<NewHome />} />
+
+This confirms NewHome.js is the active homepage!
+
+================================================================================
+                    RECOMMENDATION
+================================================================================
+
+SAFE TO DELETE:
+1. frontend/src/pages/Home.js (replaced by NewHome.js)
+
+CHECK BEFORE DELETING:
+1. AdminPanel.js - Check if EnhancedAdminPanel.js is used instead
+   - Look in App.js for which admin route is active
+
+TO CHECK ROUTES:
+Open frontend/src/App.js and look at all <Route> components to see
+which pages are actually being used.
+
+================================================================================
+
